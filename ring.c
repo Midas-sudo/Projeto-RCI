@@ -1,6 +1,8 @@
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <string.h>
@@ -76,8 +78,13 @@ int UDP_setup(char *port)
 
 int main(int argc, char **argv)
 {
-    int node_i, node_port;
-    char command[BUFFER_SIZE], *node_ip;
+    int node_i, UDP_socket, TCP_socket, max_socket, error, n;
+    char command[BUFFER_SIZE], message[BUFFER_SIZE], *node_ip, *node_port;
+
+    Node_struct *node;
+    fd_set available_sockets, ready_sockets; // Variáveis para guardar o conjunto de sockets
+    struct sockaddr_in client_addr;
+    socklen_t client_addrlen;
 
     int status = 0; // node is off
 
@@ -93,40 +100,62 @@ int main(int argc, char **argv)
         node_ip = argv[2];
         node_port = argv[3];
     }
+    fgets(command, BUFFER_SIZE, stdin);
 
+    while (strcmp(command, "new\n") != 0)
+    {
+        printf("The first command needs to be 'new' to create the new node.\n");
+        memset(command, 0, BUFFER_SIZE);
+        fgets(command, BUFFER_SIZE, stdin);
+    }
+    node = new (node_i, node_ip, node_port);
+
+    UDP_socket = UDP_setup(node->self_port);
+    // **Implementar função para socket de TCP
+
+    // Initialização do conjunto de sockets a 0
+    FD_ZERO(&available_sockets);
+
+    // Definição das sockets de ligação e o stdin na lista de sockets a observar pelo select()
+
+    FD_SET(UDP_socket, &available_sockets);
+    // FD_SET(TCP_socket, &available_sockets);
+    FD_SET(STDIN_FILENO, &available_sockets);
+
+    max_socket = UDP_socket > STDIN_FILENO ? UDP_socket + 1 : STDIN_FILENO + 1; 
+    // **Fazer verificação com a socket de TCP
     while (1)
     {
-        fgets(command, BUFFER_SIZE, stdin);
+        // Cópia de lista de sockets devido ao comportamento destrutivo do select()
+        ready_sockets = available_sockets;
 
-        switch (command[0])
-        {
-        case 'n':
-            new ();
-            break;
-        case 'b':
-            bentry();
-            break;
-        case 'p':
-            pentry();
-            break;
-        case 'c':
-            chord();
-            break;
-        case 'e':
-            echord();
-            break;
-        case 's':
-            show();
-            break;
-        case 'f':
-            find();
-            break;
-        case 'l':
-            leave();
-            break;
-        default:
+        error = select(max_socket, &ready_sockets, NULL, NULL, NULL);
+
+        if (error < 0) /*ERROR*/
             exit(1);
-            break;
+
+        if (FD_ISSET(UDP_socket, &ready_sockets))
+        {
+            memset(message, '\0', BUFFER_SIZE);
+
+            n = recvfrom(UDP_socket, message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_addrlen);
+            write(1, message, sizeof(message));
+            sendto(UDP_socket, (const char *)message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, client_addrlen);
+        }
+
+        /*if(FD_ISSET(TCP_socket, &ready_sockets)){
+
+
+        }*/
+
+        if (FD_ISSET(STDIN_FILENO, &ready_sockets))
+        {
+            memset(command, '\0', BUFFER_SIZE);
+            fgets(command, BUFFER_SIZE, stdin);
+            
+            write(1, command, sizeof(command));
         }
     }
+
+    
 }
