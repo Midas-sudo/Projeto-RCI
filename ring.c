@@ -43,6 +43,35 @@ Node_struct* new (int i, char *ip, char *port)
     Node_struct *node;
     return node = node_constructor(i, ip, port);
 }
+
+int UDP_setup(char *port)
+{
+    struct sockaddr_in *address;
+    int UDPfd, TCP_listenfd, errcode;
+    ssize_t n;
+    socklen_t addrlen;
+    struct addrinfo hints, *res;
+    struct sockaddr_in addr;
+
+    UDPfd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (UDPfd == -1) /*error*/
+        exit(1);
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    errcode = getaddrinfo(NULL, port, &hints, &res);
+    if (errcode != 0) /*Error*/
+        exit(1);
+
+    n = bind(UDPfd, res->ai_addr, res->ai_addrlen);
+    if (n == -1) /*Error*/
+        exit(1);
+
+    return UDPfd;
 }
 
 int main(int argc, char **argv)
