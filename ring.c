@@ -91,7 +91,7 @@ int main(int argc, char **argv)
     // check arguments
     if (argc != 4)
     {
-        printf("Usage: ring i i.ip i.port");
+        printf("Usage: ring i i.ip i.port\n");
         exit(0);
     }
     else
