@@ -11,7 +11,7 @@ int BUFFER_SIZE = 256;
 typedef struct
 {
     int self_i;
-    int self_port;
+    char *self_port;
     char *self_ip;
 
     int succ_i;
@@ -26,7 +26,7 @@ typedef struct
     int fd_succ;
 } Node_struct;
 
-Node_struct *node_constructor(int i, char *ip, int port)
+Node_struct *node_constructor(int i, char *ip, char *port)
 {
     Node_struct *new_node;
     new_node = malloc(sizeof(Node_struct));
@@ -36,9 +36,13 @@ Node_struct *node_constructor(int i, char *ip, int port)
     return new_node;
 }
 
-int new (int i, char *ip, int port)
+Node_struct* new (int i, char *ip, char *port)
 {
-    node = node_constructor()
+    // talvez um pouco redundante chamar outra função, mas não sei se devia tentar-se por aqui a initialização das sockets
+
+    Node_struct *node;
+    return node = node_constructor(i, ip, port);
+}
 }
 
 int main(int argc, char **argv)
@@ -58,7 +62,7 @@ int main(int argc, char **argv)
     {
         node_i = atoi(argv[1]);
         node_ip = argv[2];
-        node_port = atoi(argv[3]);
+        node_port = argv[3];
     }
 
     while (1)
