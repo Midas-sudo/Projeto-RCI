@@ -38,7 +38,7 @@ Node_struct *node_constructor(int i, char *ip, char *port)
     return new_node;
 }
 
-Node_struct* new (int i, char *ip, char *port)
+Node_struct *new (int i, char *ip, char *port)
 {
     // talvez um pouco redundante chamar outra função, mas não sei se devia tentar-se por aqui a initialização das sockets
 
@@ -76,9 +76,44 @@ int UDP_setup(char *port)
     return UDPfd;
 }
 
+int self_send(char **args, Node_struct *node)
+{
+    int Prev_node_fd, errcode, n;
+    socklen_t addrlen;
+    struct addrinfo hints, *res;
+    struct sockaddr_in addr;
+    char message[BUFFER_SIZE];
+
+    Prev_node_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (Prev_node_fd == -1) /*ERROR*/
+        exit(1);
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+
+    errcode = getaddrinfo(args[0], args[2], &hints, &res);
+    if (errcode != 0) /*ERROR*/
+        exit(1);
+
+    n = connect(Prev_node_fd, res->ai_addr, res->ai_addrlen);
+    if (n == -1) /*ERROR*/
+        exit(1);
+
+
+    sprintf(message, "SELF %s %s %s\n", node->self_i, node->self_ip, node->self_port);
+    n = write(Prev_node_fd, message, sizeof(message));
+
+    return Prev_node_fd;
+}
+
+void self_recieve()
+{
+}
+
 int main(int argc, char **argv)
 {
-    int node_i, UDP_socket, TCP_socket, max_socket, error, n;
+    int node_i, UDP_socket, TCP_socket, TCP_Prev_socket, max_socket, error, n;
     char command[BUFFER_SIZE], message[BUFFER_SIZE], *node_ip, *node_port;
 
     Node_struct *node;
@@ -122,7 +157,7 @@ int main(int argc, char **argv)
     // FD_SET(TCP_socket, &available_sockets);
     FD_SET(STDIN_FILENO, &available_sockets);
 
-    max_socket = UDP_socket > STDIN_FILENO ? UDP_socket + 1 : STDIN_FILENO + 1; 
+    max_socket = UDP_socket > STDIN_FILENO ? UDP_socket + 1 : STDIN_FILENO + 1;
     // **Fazer verificação com a socket de TCP
     while (1)
     {
@@ -150,12 +185,87 @@ int main(int argc, char **argv)
 
         if (FD_ISSET(STDIN_FILENO, &ready_sockets))
         {
+            char *cmd;
+            char **args;
+
             memset(command, '\0', BUFFER_SIZE);
             fgets(command, BUFFER_SIZE, stdin);
-            
-            write(1, command, sizeof(command));
+
+            switch (command[0])
+            {
+            case 'n':
+                break;
+            case 'b':
+                args = malloc(3 * sizeof(char *));
+                args[0] = malloc(3 * sizeof(char));
+                args[1] = malloc(BUFFER_SIZE * sizeof(char));
+                args[2] = malloc(6 * sizeof(char));
+
+                sscanf(command, "%s %s %s %s", &cmd, args[0], args[1], args[2]);
+
+                for (int i = 0; i < 3; i++)
+                    free(args[i]);
+                free(args);
+                break;
+            case 'p':
+                args = malloc(3 * sizeof(char *));
+                args[0] = malloc(3 * sizeof(char));
+                args[1] = malloc(BUFFER_SIZE * sizeof(char));
+                args[2] = malloc(6 * sizeof(char));
+
+                sscanf(command, "%s %s %s %s", &cmd, args[0], args[1], args[2]);
+
+                TCP_Prev_socket = self(args, node);
+
+                FD_SET(TCP_Prev_socket, &available_sockets);
+
+                for (int i = 0; i < 3; i++)
+                    free(args[i]);
+                free(args);
+                break;
+
+            case 'c':
+                args = malloc(3 * sizeof(char *));
+                args[0] = malloc(3 * sizeof(char));
+                args[1] = malloc(BUFFER_SIZE * sizeof(char));
+                args[2] = malloc(6 * sizeof(char));
+
+                sscanf(command, "%s %s %s %s", &cmd, args[0], args[1], args[2]);
+
+                for (int i = 0; i < 3; i++)
+                    free(args[i]);
+                free(args);
+                break;
+
+            case 'e':
+                break;
+
+            case 's':
+                break;
+
+            case 'f':
+                args = malloc(1 * sizeof(char *));
+                args[0] = malloc(3 * sizeof(char));
+
+                sscanf(command, "%s %s", &cmd, args[0]);
+
+                free(args[0]);
+                free(args);
+                break;
+
+            case 'l':
+
+                break;
+            case 'e_':
+                break;
+
+            default:
+                break;
+            }
+
+            sscanf()
+
+                write(1, command, sizeof(command));
         }
     }
-
-    
 }
