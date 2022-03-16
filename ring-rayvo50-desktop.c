@@ -94,9 +94,6 @@ int TCP_setup(char *port)
     if (n == -1) /*Error*/
         exit(1);
 
-    if (listen(TCPfd, 4) == -1)
-        exit(1);
-
     return TCPfd;
 }
 
@@ -148,7 +145,7 @@ int main(int argc, char **argv)
     // Definição das sockets de ligação e o stdin na lista de sockets a observar pelo select()
 
     FD_SET(UDP_socket, &available_sockets);
-    FD_SET(TCP_socket, &available_sockets);
+    // FD_SET(TCP_socket, &available_sockets);
     FD_SET(STDIN_FILENO, &available_sockets);
 
     // verifica qual a socket com id maior
@@ -178,11 +175,12 @@ int main(int argc, char **argv)
             memset(message, '\0', BUFFER_SIZE);
             // accept connection from incoming socket and read it
             tcp_client_addrlen = sizeof(tcp_client_addr);
+            printf("checking\n");
             if ((new_fd = accept(TCP_socket, (struct sockaddr *)&tcp_client_addr, &tcp_client_addrlen)) == -1)
-                exit(0);
+                /*error*/ printf("error");
             if (n = read(new_fd, message, BUFFER_SIZE) == -1) /*error*/
-                exit(1);
-            printf("got: %s\n", message);
+                printf("error");                              // exit(1);
+            printf("got: %s", message);
             close(new_fd);
         }
 
