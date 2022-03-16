@@ -17,18 +17,18 @@ typedef struct
     char *self_ip;
 
     int succ_i;
-    int succ_port;
+    char *succ_port;
     char *succ_ip;
 
     int chord_i;
-    int chord_port;
+    char *chord_port;
     char *chord_ip;
 
     int fd_pred;
     int fd_succ;
 } Node_struct;
 
-Node_struct *node_constructor(int i, char *ip, char *port)
+Node_struct *new_node(int i, char *ip, char *port)
 {
     Node_struct *new_node;
     new_node = malloc(sizeof(Node_struct));
@@ -36,14 +36,6 @@ Node_struct *node_constructor(int i, char *ip, char *port)
     new_node->self_ip = ip;
     new_node->self_port = port;
     return new_node;
-}
-
-Node_struct *new (int i, char *ip, char *port)
-{
-    // talvez um pouco redundante chamar outra função, mas não sei se devia tentar-se por aqui a initialização das sockets
-
-    Node_struct *node;
-    return node = node_constructor(i, ip, port);
 }
 
 int UDP_setup(char *port)
@@ -74,6 +66,39 @@ int UDP_setup(char *port)
         exit(1);
 
     return UDPfd;
+}
+
+int TCP_setup(char *port)
+{
+    int TCPfd, errcode;
+    struct sockaddr_in *address;
+    struct addrinfo hints, *res;
+    socklen_t addrlen;
+    ssize_t n;
+
+    // create TCP socket
+    TCPfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (TCPfd == -1) /*error*/
+        exit(1);
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    // get localhost ip address
+    errcode = getaddrinfo(NULL, port, &hints, &res);
+    if (errcode != 0) /*Error*/
+        exit(1);
+
+    n = bind(TCPfd, res->ai_addr, res->ai_addrlen);
+    if (n == -1) /*Error*/
+        exit(1);
+
+    if (listen(TCPfd, 4) == -1)
+        exit(1);
+
+    return TCPfd;
 }
 
 int self_send(char **args, Node_struct *node)
@@ -112,13 +137,13 @@ void self_recieve()
 
 int main(int argc, char **argv)
 {
-    int node_i, UDP_socket, TCP_socket, TCP_Prev_socket, max_socket, error, n;
+    int node_i, UDP_socket, TCP_socket, TCP_Prev_socket, max_socket, error, n, new_fd;
     char command[BUFFER_SIZE], message[BUFFER_SIZE], *node_ip, *node_port;
-
+    FILE *fp;
     Node_struct *node;
     fd_set available_sockets, ready_sockets; // Variáveis para guardar o conjunto de sockets
-    struct sockaddr_in client_addr;
-    socklen_t client_addrlen;
+    struct sockaddr_in client_addr, tcp_client_addr;
+    socklen_t client_addrlen, tcp_client_addrlen;
 
     int status = 0; // node is off
 
@@ -134,6 +159,7 @@ int main(int argc, char **argv)
         node_ip = argv[2];
         node_port = argv[3];
     }
+    printf(">>>$");
     fgets(command, BUFFER_SIZE, stdin);
 
     while (strcmp(command, "new\n") != 0)
@@ -142,10 +168,14 @@ int main(int argc, char **argv)
         memset(command, 0, BUFFER_SIZE);
         fgets(command, BUFFER_SIZE, stdin);
     }
-    node = new (node_i, node_ip, node_port);
 
+    // create a new node in memory -> remember to free in the end
+    node = new_node(node_i, node_ip, node_port);
+    printf("created node on port: %s\n", node_port);
+
+    // create sockets to listen (only needs port number as ip is localhost)
     UDP_socket = UDP_setup(node->self_port);
-    // **Implementar função para socket de TCP
+    TCP_socket = TCP_setup(node->self_port);
 
     // Initialização do conjunto de sockets a 0
     FD_ZERO(&available_sockets);
@@ -153,11 +183,12 @@ int main(int argc, char **argv)
     // Definição das sockets de ligação e o stdin na lista de sockets a observar pelo select()
 
     FD_SET(UDP_socket, &available_sockets);
-    // FD_SET(TCP_socket, &available_sockets);
+    FD_SET(TCP_socket, &available_sockets);
     FD_SET(STDIN_FILENO, &available_sockets);
 
-    max_socket = UDP_socket > STDIN_FILENO ? UDP_socket + 1 : STDIN_FILENO + 1;
-    // **Fazer verificação com a socket de TCP
+    // verifica qual a socket com id maior
+    max_socket = UDP_socket > TCP_socket ? UDP_socket + 1 : TCP_socket + 1;
+    printf("Waiting for connections...\n");
     while (1)
     {
         // Cópia de lista de sockets devido ao comportamento destrutivo do select()
@@ -168,6 +199,7 @@ int main(int argc, char **argv)
         if (error < 0) /*ERROR*/
             exit(1);
 
+        // UDP
         if (FD_ISSET(UDP_socket, &ready_sockets))
         {
             memset(message, '\0', BUFFER_SIZE);
@@ -184,11 +216,21 @@ int main(int argc, char **argv)
             };
         }
 
-        /*if(FD_ISSET(TCP_socket, &ready_sockets)){
+        // TCP
+        if (FD_ISSET(TCP_socket, &ready_sockets))
+        {
+            memset(message, '\0', BUFFER_SIZE);
+            // accept connection from incoming socket and read it
+            tcp_client_addrlen = sizeof(tcp_client_addr);
+            if ((new_fd = accept(TCP_socket, (struct sockaddr *)&tcp_client_addr, &tcp_client_addrlen)) == -1)
+                exit(0);
+            if (n = read(new_fd, message, BUFFER_SIZE) == -1) /*error*/
+                exit(1);
+            printf("got: %s\n", message);
+            close(new_fd);
+        }
 
-
-        }*/
-
+        //STDIN
         if (FD_ISSET(STDIN_FILENO, &ready_sockets))
         {
             char *cmd;
@@ -271,4 +313,3 @@ int main(int argc, char **argv)
             }
         }
     }
-}
