@@ -7,7 +7,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#define PORT 58000
+#define PORT 58002
 #define MAXLINE 1024
 int main()
 {

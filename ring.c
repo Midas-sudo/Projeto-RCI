@@ -204,7 +204,7 @@ int main(int argc, char **argv)
         {
             memset(message, '\0', BUFFER_SIZE);
 
-            // memset(&client_addr, '\0', sizeof(struct sockaddr_in));
+            memset(&client_addr, '\0', sizeof(struct sockaddr_in));
             client_addrlen = sizeof(client_addr);
             n = recvfrom(UDP_socket, message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_addrlen);
 
@@ -230,7 +230,7 @@ int main(int argc, char **argv)
             close(new_fd);
         }
 
-        //STDIN
+        // STDIN
         if (FD_ISSET(STDIN_FILENO, &ready_sockets))
         {
             char *cmd;
@@ -313,3 +313,4 @@ int main(int argc, char **argv)
             }
         }
     }
+}

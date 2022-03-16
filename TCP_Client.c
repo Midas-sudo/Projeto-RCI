@@ -7,7 +7,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <string.h>
-#define PORT “58001”
+#define PORT 58002
 
 int main(int argc, char **argv)
 {
@@ -26,7 +26,7 @@ int main(int argc, char **argv)
     hints.ai_family = AF_INET;       // IPv4
     hints.ai_socktype = SOCK_STREAM; // TCP socket
     printf("check0\n");
-    errcode = getaddrinfo("192.168.1.113", "58001", &hints, &res);
+    errcode = getaddrinfo("127.0.0.1", "58002", &hints, &res);
     if (errcode != 0) /*error*/
         exit(1);
     printf("check1\n");
