@@ -125,7 +125,7 @@ int self_send(char **args, Node_struct *node)
     if (n == -1) /*ERROR*/
         exit(1);
 
-    sprintf(message, "SELF %s %s %s\n", node->self_i, node->self_ip, node->self_port);
+    sprintf(message, "SELF %d %s %s\n", node->self_i, node->self_ip, node->self_port);
     n = write(Prev_node_fd, message, sizeof(message));
 
     return Prev_node_fd;
@@ -145,7 +145,15 @@ int main(int argc, char **argv)
     struct sockaddr_in client_addr, tcp_client_addr;
     socklen_t client_addrlen, tcp_client_addrlen;
 
-    int status = 0; // node is off
+    //merda
+    char space[2]= " ";
+    char *token;
+
+    int cenas_i;
+    char* cenas_ip, *cenas_port, *cmd;
+
+    char arg1[128], arg2[128], arg3[128], arg4[128];
+
 
     // check arguments
     if (argc != 4)
@@ -159,19 +167,36 @@ int main(int argc, char **argv)
         node_ip = argv[2];
         node_port = argv[3];
     }
-    printf(">>>$");
-    fgets(command, BUFFER_SIZE, stdin);
-
-    while (strcmp(command, "new\n") != 0)
-    {
-        printf("The first command needs to be 'new' to create the new node.\n");
-        memset(command, 0, BUFFER_SIZE);
-        fgets(command, BUFFER_SIZE, stdin);
-    }
-
+        
     // create a new node in memory -> remember to free in the end
     node = new_node(node_i, node_ip, node_port);
-    printf("created node on port: %s\n", node_port);
+    // prompt user for entering  a command
+    printf("Created node on port: %s\nWaiting for user input\n", node_port);
+    printf("\n>>>$ ");
+    fgets(command, BUFFER_SIZE, stdin);
+    sscanf(command, "%s %s %s %s", arg1, arg2, arg3, arg4);
+
+    while (strcmp(arg1, "new") != 0 && strcmp(arg1, "n") != 0 && 
+            strcmp(arg1, "pentry") != 0 && strcmp(arg1, "p") != 0 && 
+            strcmp(arg1, "bentry") != 0 && strcmp(arg1, "b") != 0  )
+    {
+        printf("The first command needs to be either 'new', 'pentry' or 'bentry'\n\n>>>$ ");
+        memset(command, 0, BUFFER_SIZE);
+        memset(arg1, 0, BUFFER_SIZE);
+        memset(arg2, 0, BUFFER_SIZE);
+        memset(arg3, 0, BUFFER_SIZE);
+        memset(arg4, 0, BUFFER_SIZE);
+        fgets(command, BUFFER_SIZE, stdin);
+        sscanf(command, "%s %s %s %s", arg1, arg2, arg3, arg4);
+        if(strcmp(arg1, "pentry") == 0 || strcmp(arg1, "p") == 0 || strcmp(arg1, "bentry") == 0 || strcmp(arg1, "b")== 0)
+        {              
+        printf("entry args: %s %s %s\n", arg2, arg3, arg4);
+        }
+    }
+    
+    
+    
+
 
     // create sockets to listen (only needs port number as ip is localhost)
     UDP_socket = UDP_setup(node->self_port);
