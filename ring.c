@@ -100,7 +100,6 @@ int self_send(char **args, Node_struct *node)
     if (n == -1) /*ERROR*/
         exit(1);
 
-
     sprintf(message, "SELF %s %s %s\n", node->self_i, node->self_ip, node->self_port);
     n = write(Prev_node_fd, message, sizeof(message));
 
@@ -173,9 +172,16 @@ int main(int argc, char **argv)
         {
             memset(message, '\0', BUFFER_SIZE);
 
+            // memset(&client_addr, '\0', sizeof(struct sockaddr_in));
+            client_addrlen = sizeof(client_addr);
             n = recvfrom(UDP_socket, message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_addrlen);
+
             write(1, message, sizeof(message));
-            sendto(UDP_socket, (const char *)message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, client_addrlen);
+            if (sendto(UDP_socket, "ACK", 3, 0, (struct sockaddr *)&client_addr, client_addrlen) < 0)
+            {
+                printf("TEMP Send failed\n");
+                exit(1);
+            };
         }
 
         /*if(FD_ISSET(TCP_socket, &ready_sockets)){
@@ -201,7 +207,7 @@ int main(int argc, char **argv)
                 args[1] = malloc(BUFFER_SIZE * sizeof(char));
                 args[2] = malloc(6 * sizeof(char));
 
-                sscanf(command, "%s %s %s %s", &cmd, args[0], args[1], args[2]);
+                sscanf(command, "%s %s %s %s", cmd, args[0], args[1], args[2]);
 
                 for (int i = 0; i < 3; i++)
                     free(args[i]);
@@ -213,11 +219,12 @@ int main(int argc, char **argv)
                 args[1] = malloc(BUFFER_SIZE * sizeof(char));
                 args[2] = malloc(6 * sizeof(char));
 
-                sscanf(command, "%s %s %s %s", &cmd, args[0], args[1], args[2]);
+                sscanf(command, "%s %s %s %s", cmd, args[0], args[1], args[2]);
 
-                TCP_Prev_socket = self(args, node);
+                TCP_Prev_socket = self_send(args, node);
 
                 FD_SET(TCP_Prev_socket, &available_sockets);
+                max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
 
                 for (int i = 0; i < 3; i++)
                     free(args[i]);
@@ -230,7 +237,7 @@ int main(int argc, char **argv)
                 args[1] = malloc(BUFFER_SIZE * sizeof(char));
                 args[2] = malloc(6 * sizeof(char));
 
-                sscanf(command, "%s %s %s %s", &cmd, args[0], args[1], args[2]);
+                sscanf(command, "%s %s %s %s", cmd, args[0], args[1], args[2]);
 
                 for (int i = 0; i < 3; i++)
                     free(args[i]);
@@ -247,7 +254,7 @@ int main(int argc, char **argv)
                 args = malloc(1 * sizeof(char *));
                 args[0] = malloc(3 * sizeof(char));
 
-                sscanf(command, "%s %s", &cmd, args[0]);
+                sscanf(command, "%s %s", cmd, args[0]);
 
                 free(args[0]);
                 free(args);
@@ -256,16 +263,12 @@ int main(int argc, char **argv)
             case 'l':
 
                 break;
-            case 'e_':
+            case 'o':
                 break;
 
             default:
                 break;
             }
-
-            sscanf()
-
-                write(1, command, sizeof(command));
         }
     }
 }
