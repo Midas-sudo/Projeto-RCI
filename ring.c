@@ -16,6 +16,7 @@
 #define YLW "\E[38;2;255;216;0m"
 #define ORG "\E[38;2;255;144;0m"
 #define GRAY "\E[38;2;64;64;64m"
+#define INPUT "\E[0;35m>>> \E[0m"
 
 int BUFFER_SIZE = 256;
 // char** command_list = ["new", "bentry", "pentry", "chord", "echord", "show", "find", "leave"];
@@ -63,16 +64,13 @@ void command_list(int i, char *ip, char *port)
     printf("│" RESET "     -Creates a new ring containing only this node;\E[87G" IST "│\n");
     printf("│\E[87G│\n");
     printf("│" YLW "    bentry" ORG " boot boot.IP boot.port\E[87G" IST "│\n");
-    printf("│" RESET "     -Entry of this node on " ORG "boot" RESET "'s node ring without knowing \E[87G" IST "│\n");
-    printf("│" RESET "      its predecessor;\E[87G" IST "│\n");
+    printf("│" RESET "     -Entry of this node on " ORG "boot" RESET "'s node ring without knowing its predecessor;\E[87G" IST "│\n");
     printf("│\E[87G│\n");
     printf("│" YLW "    pentry" ORG " pred pred.IP pred.port\E[87G" IST "│\n");
-    printf("│" RESET "     -Entry of this node on " ORG "pred" RESET "'s node ring using " ORG "pred\E[87G" IST "│\n");
-    printf("│" RESET "      as its predecessor;\E[87G" IST "│\n");
+    printf("│" RESET "     -Entry of this node on " ORG "pred" RESET "'s node ring using " ORG "pred" RESET " as its predecessor;\E[87G" IST "│\n");
     printf("│\E[87G│\n");
     printf("│" YLW "    chord" ORG " i i.IP i.port\E[87G" IST "│\n");
-    printf("│" RESET "     -Creation of a shortcut to node " ORG "i" RESET " (each node canonly have one\E[87G" IST "│\n");
-    printf("│" RESET "      shortcut);\E[87G" IST "│\n");
+    printf("│" RESET "     -Creation of a shortcut to node " ORG "i" RESET " (each node can only have one shortcut);\E[87G" IST "│\n");
     printf("│\E[87G│\n");
     printf("│" YLW "    echord\E[87G" IST "│\n");
     printf("│" RESET "     -Deletion of current shortcut;\E[87G" IST "│\n");
@@ -243,7 +241,7 @@ int main(int argc, char **argv)
     command_list(node_i, node_ip, node_port);
 
     printf("Waiting for user input\n");
-    printf(MAG ">>> " RESET);
+    write(1, INPUT, sizeof(INPUT));
     fgets(command, BUFFER_SIZE, stdin);
     sscanf(command, "%s %s %s %s", arg1, arg2, arg3, arg4);
 
@@ -281,7 +279,7 @@ int main(int argc, char **argv)
     // verifica qual a socket com id maior
     max_socket = UDP_socket > TCP_socket ? UDP_socket + 1 : TCP_socket + 1;
     printf("Waiting for connections or command input\n");
-    write(1, MAG ">>> " RESET, 14);
+    write(1, INPUT, sizeof(INPUT));
     while (1)
     {
         // Cópia de lista de sockets devido ao comportamento destrutivo do select()
@@ -404,7 +402,7 @@ int main(int argc, char **argv)
                 break;
             }
 
-            printf(MAG ">>> " RESET);
+            write(1, INPUT, sizeof(INPUT));
         }
     }
 }
