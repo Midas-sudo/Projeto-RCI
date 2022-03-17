@@ -11,7 +11,7 @@
 #define GRN "\E[32m"
 #define MAG "\E[0;35m"
 #define CYN "\E[36m"
-#define RESET "\E[0m"
+#define RESET "\E[0;0m"
 #define IST "\E[38;2;0;157;224m"
 #define YLW "\E[38;2;255;216;0m"
 #define ORG "\E[38;2;255;144;0m"
@@ -197,6 +197,47 @@ void self_recieve()
 {
 }
 
+// prompts user for a command (and its args) and returns the number of args read
+int get_command(char** args){ 
+    char buffer[BUFFER_SIZE];
+    memset(args[0], 0, BUFFER_SIZE);
+    memset(args[1], 0, BUFFER_SIZE);
+    memset(args[2], 0, BUFFER_SIZE);
+    memset(args[3], 0, BUFFER_SIZE);
+    printf(MAG ">>> " RESET);
+    fgets(buffer, BUFFER_SIZE, stdin);
+    return sscanf(buffer, "%s %s %s %s", args[0], args[1], args[2], args[3]);
+}
+
+// checks if a command is valid aka if its new or pentry or bentry with the right args
+// returns 0 for "new", 1 for "pentry" and 2 for "bentry"
+int check_first_command(char **args, int num_read)
+{
+    if(strcmp(args[0], "new") == 0 || strcmp(args[0], "n") == 0)
+        return 0;
+
+    if (strcmp(args[0], "pentry") == 0 || strcmp(args[0], "p") == 0)
+    {
+        if(num_read != 4){
+            printf(YLW "Usage: pentry key key.ip key.port\n" RESET);
+            return -1;
+        }
+        printf("pentry args: %s %s %s\n", args[1], args[2], args[3]);
+        return 1;
+    }
+    if (strcmp(args[0], "bentry") == 0 || strcmp(args[0], "b") == 0)
+    {   
+        if(num_read != 4){
+            printf(YLW "Usage: bentry key key.ip key.port\n" RESET);
+            return -1;
+        }
+        printf("bentry args: %s %s %s\n", args[1], args[2], args[3]);
+        return 2;
+    }
+    printf(RED "\"%s\" is not a valid command.\n" RESET, args[0]);
+    return -1;
+}
+
 int main(int argc, char **argv)
 {
     int node_i, UDP_socket, TCP_socket, TCP_Prev_socket, max_socket, error, n, new_fd;
@@ -206,15 +247,7 @@ int main(int argc, char **argv)
     fd_set available_sockets, ready_sockets; // Variáveis para guardar o conjunto de sockets
     struct sockaddr_in client_addr, tcp_client_addr;
     socklen_t client_addrlen, tcp_client_addrlen;
-
-    // merda
-    char space[2] = " ";
-    char *token;
-
-    int cenas_i;
-    char *cenas_ip, *cenas_port, *cmd;
-
-    char arg1[128], arg2[128], arg3[128], arg4[128];
+    char ** args;
 
     // check arguments
     if (argc != 4)
@@ -242,29 +275,17 @@ int main(int argc, char **argv)
     // prompt user for entering  a command and shows command list
     command_list(node_i, node_ip, node_port);
 
-    printf("Waiting for user input\n");
-    printf(MAG ">>> " RESET);
-    fgets(command, BUFFER_SIZE, stdin);
-    sscanf(command, "%s %s %s %s", arg1, arg2, arg3, arg4);
-
-    while (strcmp(arg1, "new") != 0 && strcmp(arg1, "n") != 0 &&
-           strcmp(arg1, "pentry") != 0 && strcmp(arg1, "p") != 0 &&
-           strcmp(arg1, "bentry") != 0 && strcmp(arg1, "b") != 0)
-    {
-        printf(RED "\nThe first command needs to be either 'new', 'pentry' or 'bentry'\n" MAG ">>> " RESET);
-        memset(command, 0, BUFFER_SIZE);
-        memset(arg1, 0, BUFFER_SIZE);
-        memset(arg2, 0, BUFFER_SIZE);
-        memset(arg3, 0, BUFFER_SIZE);
-        memset(arg4, 0, BUFFER_SIZE);
-        fgets(command, BUFFER_SIZE, stdin);
-        sscanf(command, "%s %s %s %s", arg1, arg2, arg3, arg4);
-        if (strcmp(arg1, "pentry") == 0 || strcmp(arg1, "p") == 0 || strcmp(arg1, "bentry") == 0 || strcmp(arg1, "b") == 0)
-        {
-            printf("entry args: %s %s %s\n", arg2, arg3, arg4);
-        }
+    // ** Don't forget to free in the end!!!
+    args = malloc(4*sizeof(char*));
+    for(int i=0;i<4;i++){
+        args[i]= malloc(BUFFER_SIZE*sizeof(char));
     }
 
+    int num_read = get_command(args);
+    while(check_first_command(args, num_read) == -1){
+        num_read = get_command(args);
+    }
+    
     // create sockets to listen (only needs port number as ip is localhost)
     UDP_socket = UDP_setup(node->self_port);
     TCP_socket = TCP_setup(node->self_port);
@@ -288,7 +309,6 @@ int main(int argc, char **argv)
         ready_sockets = available_sockets;
 
         error = select(max_socket, &ready_sockets, NULL, NULL, NULL);
-
         if (error < 0) /*ERROR*/
             exit(1);
 
@@ -318,11 +338,13 @@ int main(int argc, char **argv)
                 exit(0);
             if (n = read(new_fd, message, BUFFER_SIZE) == -1) /*error*/
                 exit(1);
-            printf("Recived: %s\n", message);
+            printf("Received: %s\n", message);
             close(new_fd);
         }
 
         // STDIN
+        // TODO: tem que se remover o new pentry e bentry porque uma vez
+        // usado um desses nunca mais se pode usar (até pelo menos ao leave)
         if (FD_ISSET(STDIN_FILENO, &ready_sockets))
         {
             char *cmd;
