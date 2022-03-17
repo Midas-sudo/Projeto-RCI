@@ -485,7 +485,7 @@ int main(int argc, char **argv)
                         temp_ptr += n_read;
                         total += n_read;
                     }
-                    message[total] = "\0";
+                    //message[total] = "\0";
                     sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
 
                     if (strcmp(args[0], "SELF") == 0)
@@ -562,7 +562,7 @@ int main(int argc, char **argv)
                         temp_ptr += n_read;
                         total += n_read;
                     }
-                    message[total] = "\0";
+                    //message[total] = "\0";
                     sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
 
                     if (strcmp(args[0], "PRED") == 0)
@@ -583,3 +583,4 @@ int main(int argc, char **argv)
         //     free(args[i]);
         // free(args);
     }
+}
