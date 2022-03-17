@@ -52,6 +52,9 @@ Node_struct *new_node(int i, char *ip, char *port)
     new_node->chord_i = -1;
     new_node->is_online = 0;
     new_node->succ_i = -1;
+    new_node->fd_succ = -1;
+    new_node->fd_pred = -1;
+    new_node->fd_cord = -1;
     return new_node;
 }
 
@@ -158,8 +161,11 @@ int TCP_setup(char *port)
         exit(1);
 
     n = bind(TCPfd, res->ai_addr, res->ai_addrlen);
-    if (n == -1) /*Error*/
+    if (n == -1)
+    { /*Error*/
+        printf(RED "Error Binding" RESET);
         exit(1);
+    }
 
     if (listen(TCPfd, 4) == -1)
         exit(1);
@@ -183,7 +189,7 @@ int self_send(char **args, Node_struct *node)
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
-    errcode = getaddrinfo(args[0], args[2], &hints, &res);
+    errcode = getaddrinfo(args[2], args[3], &hints, &res);
     if (errcode != 0) /*ERROR*/
         exit(1);
 
@@ -405,7 +411,8 @@ int main(int argc, char **argv)
     }
 
     num_read = get_command(args);
-    while (check_command(args, num_read, node) == -1)
+    mode = check_command(args, num_read, node);
+    while (mode == -1)
     {
         num_read = get_command(args);
     }
@@ -414,7 +421,7 @@ int main(int argc, char **argv)
     UDP_socket = UDP_setup(node->self_port);
     TCP_socket = TCP_setup(node->self_port);
 
-    // Initialização do conjunto de sockets a 0
+    //  Initialização do conjunto de sockets a 0
     FD_ZERO(&available_sockets);
 
     // Definição das sockets de ligação e o stdin na lista de sockets a observar pelo select()
@@ -448,7 +455,6 @@ int main(int argc, char **argv)
         error = select(max_socket, &ready_sockets, NULL, NULL, NULL);
         if (error < 0) /*ERROR*/
             exit(1);
-
         for (int i = 0; i < max_socket; i++)
         {
             if (FD_ISSET(i, &ready_sockets))
@@ -478,14 +484,15 @@ int main(int argc, char **argv)
                     tcp_client_addrlen = sizeof(tcp_client_addr);
                     if ((new_fd = accept(TCP_socket, (struct sockaddr *)&tcp_client_addr, &tcp_client_addrlen)) == -1)
                         exit(0);
-                    while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) != 0)
-                    {
-                        if (n_read < 0)
-                            exit(1);
-                        temp_ptr += n_read;
-                        total += n_read;
-                    }
-                    //message[total] = "\0";
+                    n_read = read(new_fd, temp_ptr, BUFFER_SIZE);
+                    // while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) > 1)
+                    // {
+                    //     if (n_read < 0)
+                    //         exit(1);
+                    //     temp_ptr += n_read;
+                    //     total += n_read;
+                    // }
+                    // message[total] = "\0";
                     sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
 
                     if (strcmp(args[0], "SELF") == 0)
@@ -501,7 +508,6 @@ int main(int argc, char **argv)
                     }
 
                     printf("Recived: %s\n", message);
-                    close(new_fd);
                 }
                 else if (i == STDIN_FILENO)
                 {
@@ -555,14 +561,14 @@ int main(int argc, char **argv)
                     memset(message, '\0', BUFFER_SIZE);
                     temp_ptr = message;
 
-                    while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) != 0)
+                    while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) > 1)
                     {
                         if (n_read < 0)
                             exit(1);
                         temp_ptr += n_read;
                         total += n_read;
                     }
-                    //message[total] = "\0";
+                    // message[total] = "\0";
                     sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
 
                     if (strcmp(args[0], "PRED") == 0)

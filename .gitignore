@@ -2,3 +2,4 @@ ring
 .vscode
 TCP_Client
 UDP_Client
+*.sync*
