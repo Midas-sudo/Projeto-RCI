@@ -37,6 +37,8 @@ typedef struct
 
     int fd_pred;
     int fd_succ;
+
+    int is_online;
 } Node_struct;
 
 Node_struct *new_node(int i, char *ip, char *port)
@@ -46,6 +48,8 @@ Node_struct *new_node(int i, char *ip, char *port)
     new_node->self_i = i;
     new_node->self_ip = ip;
     new_node->self_port = port;
+    new_node->chord_i = -1;
+    new_node->is_online = 0;
     new_node->succ_i = -1;
     return new_node;
 }
@@ -235,40 +239,59 @@ int get_command(char **args)
     memset(args[1], 0, BUFFER_SIZE);
     memset(args[2], 0, BUFFER_SIZE);
     memset(args[3], 0, BUFFER_SIZE);
-    printf(MAG ">>> " RESET);
+    write(1, INPUT, sizeof(INPUT));
     fgets(buffer, BUFFER_SIZE, stdin);
     return sscanf(buffer, "%s %s %s %s", args[0], args[1], args[2], args[3]);
 }
 
 // checks if a command is valid aka if its new or pentry or bentry with the right args
 // returns 0 for "new", 1 for "pentry" and 2 for "bentry"
-int check_first_command(char **args, int num_read, Node_struct *node)
+int check_command(char **args, int num_read, Node_struct *node)
 {
     if (strcmp(args[0], "new") == 0 || strcmp(args[0], "n") == 0)
+    {
+        if (node->is_online)
+        {
+            printf(RED "Node is already part of a ring. First use \"leave\" to leave the ring\n" RESET);
+            return -1;
+        }
         return 0;
-
+    }
     if (strcmp(args[0], "bentry") == 0 || strcmp(args[0], "b") == 0)
     {
+        if (node->is_online)
+        {
+            printf(RED "Node is already part of a ring. First use \"leave\" to leave the ring\n" RESET);
+            return -1;
+        }
         if (num_read != 4)
         {
             printf(YLW "Usage: bentry key key.ip key.port\n" RESET);
             return -1;
         }
-        // printf("bentry args: %s %s %s\n", args[1], args[2], args[3]);
         return 1;
     }
     if (strcmp(args[0], "pentry") == 0 || strcmp(args[0], "p") == 0)
     {
+        if (node->is_online)
+        {
+            printf(RED "Node is already part of a ring. First use \"leave\" to leave the ring\n" RESET);
+            return -1;
+        }
         if (num_read != 4)
         {
             printf(YLW "Usage: pentry key key.ip key.port\n" RESET);
             return -1;
         }
-        // printf("pentry args: %s %s %s\n", args[1], args[2], args[3]);
         return 2;
     }
     if (strcmp(args[0], "chord") == 0 || strcmp(args[0], "c") == 0)
     {
+        if (!node->is_online)
+        {
+            printf(RED "Node is not part of a ring. Use \"new\", \"pentry\" or \"bentry\"\n" RESET);
+            return -1;
+        }
         if (num_read != 4)
         {
             printf(YLW "Usage: chord key key.ip key.port\n" RESET);
@@ -277,22 +300,57 @@ int check_first_command(char **args, int num_read, Node_struct *node)
         return 3;
     }
     if (strcmp(args[0], "echord") == 0 || strcmp(args[0], "e") == 0 && node->chord_i != -1)
-        return 0;
+    {
+        if (!node->is_online)
+        {
+            printf(RED "Node is not part of a ring. Use \"new\", \"pentry\" or \"bentry\"\n" RESET);
+            return -1;
+        }
+        return 4;
+    }
     if (strcmp(args[0], "show") == 0 || strcmp(args[0], "s") == 0)
-        return 0;
+    {
+        if (!node->is_online)
+        {
+            printf(RED "Node is not part of a ring. Use \"new\", \"pentry\" or \"bentry\"\n" RESET);
+            return -1;
+        }
+        return 5;
+    }
     if (strcmp(args[0], "find") == 0 || strcmp(args[0], "f") == 0)
-        return 0;
+    {
+        if (!node->is_online)
+        {
+            printf(RED "Node is not part of a ring. Use \"new\", \"pentry\" or \"bentry\"\n" RESET);
+            return -1;
+        }
+        return 6;
+    }
     if (strcmp(args[0], "leave") == 0 || strcmp(args[0], "l") == 0)
-        return 0;
+    {
+        if (!node->is_online)
+        {
+            printf(RED "Node is not part of a ring. Use \"new\", \"pentry\" or \"bentry\"\n" RESET);
+            return -1;
+        }
+        return 7;
+    }
     if (strcmp(args[0], "exit") == 0 || strcmp(args[0], "e") == 0)
-        return 0;
+    {
+        if (!node->is_online)
+        {
+            printf(RED "Node is not part of a ring. Use \"new\", \"pentry\" or \"bentry\"\n" RESET);
+            return -1;
+        }
+        return 8;
+    }
     printf(RED "\"%s\" is not a valid command.\n" RESET, args[0]);
     return -1;
 }
 
 int main(int argc, char **argv)
 {
-    int node_i, UDP_socket, TCP_socket, TCP_Prev_socket, max_socket, error, n, new_fd, mode;
+    int node_i, UDP_socket, TCP_socket, TCP_Prev_socket, max_socket, error, n, new_fd;
     char command[BUFFER_SIZE], message[BUFFER_SIZE], *node_ip, *node_port;
     FILE *fp;
     Node_struct *node;
@@ -300,6 +358,7 @@ int main(int argc, char **argv)
     struct sockaddr_in client_addr, tcp_client_addr;
     socklen_t client_addrlen, tcp_client_addrlen;
     char **args;
+    int num_read, mode;
 
     // check arguments
     if (argc != 4)
@@ -337,8 +396,8 @@ int main(int argc, char **argv)
         args[i] = malloc(BUFFER_SIZE * sizeof(char));
     }
 
-    int num_read = get_command(args);
-    while (mode = check_first_command(args, num_read, node) == -1)
+    num_read = get_command(args);
+    while (check_command(args, num_read, node) == -1)
     {
         num_read = get_command(args);
     }
@@ -371,6 +430,7 @@ int main(int argc, char **argv)
     }
 
     printf("Waiting for connections or command input\n");
+    node->is_online = 1;
     write(1, INPUT, sizeof(INPUT));
     while (1)
     {
@@ -429,65 +489,43 @@ int main(int argc, char **argv)
         }
 
         // STDIN
-        // TODO: tem que se remover o new pentry e bentry porque uma vez
-        // usado um desses nunca mais se pode usar (até pelo menos ao leave)
         if (FD_ISSET(STDIN_FILENO, &ready_sockets))
         {
-            char *cmd;
-
-            memset(command, '\0', BUFFER_SIZE);
-            fgets(command, BUFFER_SIZE, stdin);
-
-            switch (command[0])
+            num_read = get_command(args);
+            mode = check_command(args, num_read, node);
+            switch (mode)
             {
-            case 'n':
+            case 1: // new
                 break;
-            case 'b':
-                sscanf(command, "%s %s %s %s", cmd, args[0], args[1], args[2]);
 
-                for (int i = 0; i < 3; i++)
-                    free(args[i]);
-                free(args);
+            case 2: // bentry
                 break;
-            case 'p':
-                sscanf(command, "%s %s %s %s", cmd, args[0], args[1], args[2]);
 
+            case 3: // pentry
                 TCP_Prev_socket = self_send(args, node);
 
                 FD_SET(TCP_Prev_socket, &available_sockets);
                 max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
-
-                for (int i = 0; i < 3; i++)
-                    free(args[i]);
-                free(args);
                 break;
 
-            case 'c':
-                sscanf(command, "%s %s %s %s", cmd, args[0], args[1], args[2]);
-
-                for (int i = 0; i < 3; i++)
-                    free(args[i]);
-                free(args);
+            case 4: // chord
                 break;
 
-            case 'e':
+            case 5: // echord
                 break;
 
-            case 's':
+            case 6: // show
                 break;
 
-            case 'f':
-                sscanf(command, "%s %s", cmd, args[0]);
-
-                free(args[0]);
-                free(args);
+            case 7: // find
                 break;
 
-            case 'l':
+            case 8: // leave
+                break;
 
+            case 9: // exit
                 break;
-            case 'o':
-                break;
+
             default:
                 break;
             }
@@ -495,4 +533,8 @@ int main(int argc, char **argv)
             write(1, INPUT, sizeof(INPUT));
         }
     }
+    // free merdas
+    // for (int i = 0; i < 3; i++)
+    //     free(args[i]);
+    // free(args);
 }
