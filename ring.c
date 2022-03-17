@@ -7,6 +7,16 @@
 #include <netdb.h>
 #include <string.h>
 
+#define RED "\E[1;31m"
+#define GRN "\E[32m"
+#define MAG "\E[0;35m"
+#define CYN "\E[36m"
+#define RESET "\E[0m"
+#define IST "\E[38;2;0;157;224m"
+#define YLW "\E[38;2;255;216;0m"
+#define ORG "\E[38;2;255;144;0m"
+#define GRAY "\E[38;2;64;64;64m"
+
 int BUFFER_SIZE = 256;
 // char** command_list = ["new", "bentry", "pentry", "chord", "echord", "show", "find", "leave"];
 
@@ -36,6 +46,58 @@ Node_struct *new_node(int i, char *ip, char *port)
     new_node->self_ip = ip;
     new_node->self_port = port;
     return new_node;
+}
+
+void command_list(int i, char *ip, char *port)
+{
+    printf(IST "┌─Node─Information─and─Command─List───────────────────────────────────────────────────┐\n");
+    printf("│" RESET "\E[1m  New node created with:\E[87G\E[0m" IST "│\n");
+    printf("│" RESET "   ~Key:  " GRN "%d\E[87G" IST "│\n", i);
+    printf("│" RESET "   ~IP:   " GRN "%s\E[87G" IST "│\n", ip);
+    printf("│" RESET "   ~Port: " GRN "%s\E[87G" IST "│\n", port);
+    printf("│\E[87G│\n");
+    printf("│" RESET "\E[1m  Command List:\E[87G\E[0m" IST "│\n");
+    printf("│" RESET "   (Every command can also be called by its initial only)\E[87G" IST "│\n");
+    printf("│\E[87G│\n");
+    printf("│" YLW "    new\E[87G" IST "│\n");
+    printf("│" RESET "     -Creates a new ring containing only this node;\E[87G" IST "│\n");
+    printf("│\E[87G│\n");
+    printf("│" YLW "    bentry" ORG " boot boot.IP boot.port\E[87G" IST "│\n");
+    printf("│" RESET "     -Entry of this node on " ORG "boot" RESET "'s node ring without knowing \E[87G" IST "│\n");
+    printf("│" RESET "      its predecessor;\E[87G" IST "│\n");
+    printf("│\E[87G│\n");
+    printf("│" YLW "    pentry" ORG " pred pred.IP pred.port\E[87G" IST "│\n");
+    printf("│" RESET "     -Entry of this node on " ORG "pred" RESET "'s node ring using " ORG "pred\E[87G" IST "│\n");
+    printf("│" RESET "      as its predecessor;\E[87G" IST "│\n");
+    printf("│\E[87G│\n");
+    printf("│" YLW "    chord" ORG " i i.IP i.port\E[87G" IST "│\n");
+    printf("│" RESET "     -Creation of a shortcut to node " ORG "i" RESET " (each node canonly have one\E[87G" IST "│\n");
+    printf("│" RESET "      shortcut);\E[87G" IST "│\n");
+    printf("│\E[87G│\n");
+    printf("│" YLW "    echord\E[87G" IST "│\n");
+    printf("│" RESET "     -Deletion of current shortcut;\E[87G" IST "│\n");
+    printf("│\E[87G│\n");
+    printf("│" YLW "    show\E[87G" IST "│\n");
+    printf("│" RESET "     -Shows current information of node. This information is divided in 4 parts:\E[87G" IST "│\n");
+    printf("│\E[87G│\n");
+    printf("│" RESET "        (i)  Key, IP Address, Port;\E[87G" IST "│\n");
+    printf("│" RESET "       (ii)  Key, IP Address, Port of node sucessor;\E[87G" IST "│\n");
+    printf("│" RESET "      (iii)  Key, IP Address, Port of node predecessor;\E[87G" IST "│\n");
+    printf("│" RESET "       (iv)  Key, IP Address, Port of node shortcut;\E[87G" IST "│\n");
+    printf("│\E[87G│\n");
+    printf("│" YLW "    find " ORG "k\E[87G" IST "│\n");
+    printf("│" RESET "     -Searches for the key " ORG "k" RESET " on the ring returning it's key, IP\E[87G" IST "│\n"); 
+    printf("│" RESET "      address, and port;\E[87G" IST "│\n");
+    printf("│\E[87G│\n");
+    printf("│" YLW "    leave\E[87G" IST "│\n");
+    printf("│" RESET "     -Exit of this node from current ring;\E[87G" IST "│\n");
+    printf("│\E[87G│\n");
+    printf("│" YLW "    exit\E[87G" IST "│\n");
+    printf("│" RESET "     -Closes aplication; \E[87G" IST "│\n");
+    printf("│" GRAY "      (The abriviation of this command only works if there is currently no shortcut)\E[87G" IST "│\n");
+    //printf("│" GRAY "                                  " IST "│\n");
+    printf("└─────────────────────────────────────────────────────────────────────────────────────┘\n" RESET);
+    return;
 }
 
 int UDP_setup(char *port)
@@ -145,15 +207,14 @@ int main(int argc, char **argv)
     struct sockaddr_in client_addr, tcp_client_addr;
     socklen_t client_addrlen, tcp_client_addrlen;
 
-    //merda
-    char space[2]= " ";
+    // merda
+    char space[2] = " ";
     char *token;
 
     int cenas_i;
-    char* cenas_ip, *cenas_port, *cmd;
+    char *cenas_ip, *cenas_port, *cmd;
 
     char arg1[128], arg2[128], arg3[128], arg4[128];
-
 
     // check arguments
     if (argc != 4)
@@ -167,20 +228,30 @@ int main(int argc, char **argv)
         node_ip = argv[2];
         node_port = argv[3];
     }
-        
+
+    printf(IST "┌─Projecto─de─Redes─de─Computadores─e─Internet─────────────┐\n");
+    printf("│" RESET "Base de Dados em Anel com Cordas         Ano Letivo 21/22 " IST "│\n");
+    printf("│                                                          │\n");
+    printf("│" RESET "Autores:                                                  " IST "│\n");
+    printf("│" RESET "    •Gonçalo Midões -------------------------- ist196219  " IST "│\n");
+    printf("│" RESET "    •Ravi Regalo ----------------------------- ist196305  " IST "│\n");
+    printf("└──────────────────────────────────────────────────────────┘\n\n" RESET);
+
     // create a new node in memory -> remember to free in the end
     node = new_node(node_i, node_ip, node_port);
-    // prompt user for entering  a command
-    printf("Created node on port: %s\nWaiting for user input\n", node_port);
-    printf("\n>>>$ ");
+    // prompt user for entering  a command and shows command list
+    command_list(node_i, node_ip, node_port);
+
+    printf("Waiting for user input\n");
+    printf(MAG ">>> " RESET);
     fgets(command, BUFFER_SIZE, stdin);
     sscanf(command, "%s %s %s %s", arg1, arg2, arg3, arg4);
 
-    while (strcmp(arg1, "new") != 0 && strcmp(arg1, "n") != 0 && 
-            strcmp(arg1, "pentry") != 0 && strcmp(arg1, "p") != 0 && 
-            strcmp(arg1, "bentry") != 0 && strcmp(arg1, "b") != 0  )
+    while (strcmp(arg1, "new") != 0 && strcmp(arg1, "n") != 0 &&
+           strcmp(arg1, "pentry") != 0 && strcmp(arg1, "p") != 0 &&
+           strcmp(arg1, "bentry") != 0 && strcmp(arg1, "b") != 0)
     {
-        printf("The first command needs to be either 'new', 'pentry' or 'bentry'\n\n>>>$ ");
+        printf(RED "\nThe first command needs to be either 'new', 'pentry' or 'bentry'\n" MAG ">>> " RESET);
         memset(command, 0, BUFFER_SIZE);
         memset(arg1, 0, BUFFER_SIZE);
         memset(arg2, 0, BUFFER_SIZE);
@@ -188,15 +259,11 @@ int main(int argc, char **argv)
         memset(arg4, 0, BUFFER_SIZE);
         fgets(command, BUFFER_SIZE, stdin);
         sscanf(command, "%s %s %s %s", arg1, arg2, arg3, arg4);
-        if(strcmp(arg1, "pentry") == 0 || strcmp(arg1, "p") == 0 || strcmp(arg1, "bentry") == 0 || strcmp(arg1, "b")== 0)
-        {              
-        printf("entry args: %s %s %s\n", arg2, arg3, arg4);
+        if (strcmp(arg1, "pentry") == 0 || strcmp(arg1, "p") == 0 || strcmp(arg1, "bentry") == 0 || strcmp(arg1, "b") == 0)
+        {
+            printf("entry args: %s %s %s\n", arg2, arg3, arg4);
         }
     }
-    
-    
-    
-
 
     // create sockets to listen (only needs port number as ip is localhost)
     UDP_socket = UDP_setup(node->self_port);
@@ -213,7 +280,8 @@ int main(int argc, char **argv)
 
     // verifica qual a socket com id maior
     max_socket = UDP_socket > TCP_socket ? UDP_socket + 1 : TCP_socket + 1;
-    printf("Waiting for connections...\n");
+    printf("Waiting for connections or command input\n");
+    write(1, MAG ">>> " RESET, 14);
     while (1)
     {
         // Cópia de lista de sockets devido ao comportamento destrutivo do select()
@@ -232,7 +300,6 @@ int main(int argc, char **argv)
             memset(&client_addr, '\0', sizeof(struct sockaddr_in));
             client_addrlen = sizeof(client_addr);
             n = recvfrom(UDP_socket, message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_addrlen);
-
             write(1, message, sizeof(message));
             if (sendto(UDP_socket, "ACK", 3, 0, (struct sockaddr *)&client_addr, client_addrlen) < 0)
             {
@@ -251,7 +318,7 @@ int main(int argc, char **argv)
                 exit(0);
             if (n = read(new_fd, message, BUFFER_SIZE) == -1) /*error*/
                 exit(1);
-            printf("got: %s\n", message);
+            printf("Recived: %s\n", message);
             close(new_fd);
         }
 
@@ -336,6 +403,8 @@ int main(int argc, char **argv)
             default:
                 break;
             }
+
+            printf(MAG ">>> " RESET);
         }
     }
 }
