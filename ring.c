@@ -164,7 +164,7 @@ int TCP_setup(char *port)
 
 int self_send(char **args, Node_struct *node)
 {
-    int Prev_node_fd, errcode, n;
+    int Prev_node_fd, errcode, n_left, n_written;
     socklen_t addrlen;
     struct addrinfo hints, *res;
     struct sockaddr_in addr;
@@ -182,12 +182,21 @@ int self_send(char **args, Node_struct *node)
     if (errcode != 0) /*ERROR*/
         exit(1);
 
-    n = connect(Prev_node_fd, res->ai_addr, res->ai_addrlen);
-    if (n == -1) /*ERROR*/
+    errcode = connect(Prev_node_fd, res->ai_addr, res->ai_addrlen);
+    if (errcode == -1) /*ERROR*/
         exit(1);
 
     sprintf(message, "SELF %d %s %s\n", node->self_i, node->self_ip, node->self_port);
-    n = write(Prev_node_fd, message, sizeof(message));
+
+    n_left = sizeof(message);
+    while (n_left > 0)
+    {
+        n_written = write(Prev_node_fd, message, sizeof(message));
+        if (n_written <= 0)
+            exit(1);
+        n_left -= n_written;
+        *message += n_written;
+    }
 
     return Prev_node_fd;
 }
@@ -195,16 +204,21 @@ int self_send(char **args, Node_struct *node)
 void self_recieve(char **args, Node_struct *node, int fd)
 {
     char message[BUFFER_SIZE];
-    int n;
+    int n_left, n_written;
     if (node->succ_i != -1)
     {
         sprintf(message, "PRED %s %s %s\n", args[0], args[1], args[2]);
-        n = write(node->fd_succ, message, sizeof(message));
-        if (n == -1)
+        while (n_left > 0)
         {
-            /*ERROR*/
-            printf("Error sending TCP message to Sucessor!");
-            exit(1);
+            n_written = write(node->fd_succ, message, sizeof(message));
+            if (n_written <= 0)
+            {
+                /*ERROR*/
+                printf("Error sending TCP message to Sucessor!");
+                exit(1);
+            }
+            n_left -= n_written;
+            *message += n_written;
         }
     }
     node->succ_i = atoi(args[0]);
@@ -214,7 +228,8 @@ void self_recieve(char **args, Node_struct *node, int fd)
 }
 
 // prompts user for a command (and its args) and returns the number of args read
-int get_command(char** args){ 
+int get_command(char **args)
+{
     char buffer[BUFFER_SIZE];
     memset(args[0], 0, BUFFER_SIZE);
     memset(args[1], 0, BUFFER_SIZE);
@@ -227,46 +242,49 @@ int get_command(char** args){
 
 // checks if a command is valid aka if its new or pentry or bentry with the right args
 // returns 0 for "new", 1 for "pentry" and 2 for "bentry"
-int check_first_command(char **args, int num_read, Node_struct* node)
+int check_first_command(char **args, int num_read, Node_struct *node)
 {
-    if(strcmp(args[0], "new") == 0 || strcmp(args[0], "n") == 0)
+    if (strcmp(args[0], "new") == 0 || strcmp(args[0], "n") == 0)
         return 0;
 
     if (strcmp(args[0], "bentry") == 0 || strcmp(args[0], "b") == 0)
     {
-        if(num_read != 4){
+        if (num_read != 4)
+        {
             printf(YLW "Usage: bentry key key.ip key.port\n" RESET);
             return -1;
         }
-        //printf("bentry args: %s %s %s\n", args[1], args[2], args[3]);
+        // printf("bentry args: %s %s %s\n", args[1], args[2], args[3]);
         return 1;
     }
     if (strcmp(args[0], "pentry") == 0 || strcmp(args[0], "p") == 0)
-    {   
-        if(num_read != 4){
+    {
+        if (num_read != 4)
+        {
             printf(YLW "Usage: pentry key key.ip key.port\n" RESET);
             return -1;
         }
-        //printf("pentry args: %s %s %s\n", args[1], args[2], args[3]);
+        // printf("pentry args: %s %s %s\n", args[1], args[2], args[3]);
         return 2;
     }
     if (strcmp(args[0], "chord") == 0 || strcmp(args[0], "c") == 0)
-    {   
-        if(num_read != 4){
+    {
+        if (num_read != 4)
+        {
             printf(YLW "Usage: chord key key.ip key.port\n" RESET);
             return -1;
         }
         return 3;
     }
-    if(strcmp(args[0], "echord") == 0 || strcmp(args[0], "e") == 0 && node->chord_i != -1)
+    if (strcmp(args[0], "echord") == 0 || strcmp(args[0], "e") == 0 && node->chord_i != -1)
         return 0;
-    if(strcmp(args[0], "show") == 0 || strcmp(args[0], "s") == 0)
+    if (strcmp(args[0], "show") == 0 || strcmp(args[0], "s") == 0)
         return 0;
-    if(strcmp(args[0], "find") == 0 || strcmp(args[0], "f") == 0)
+    if (strcmp(args[0], "find") == 0 || strcmp(args[0], "f") == 0)
         return 0;
-    if(strcmp(args[0], "leave") == 0 || strcmp(args[0], "l") == 0)
+    if (strcmp(args[0], "leave") == 0 || strcmp(args[0], "l") == 0)
         return 0;
-    if(strcmp(args[0], "exit") == 0 || strcmp(args[0], "e") == 0)
+    if (strcmp(args[0], "exit") == 0 || strcmp(args[0], "e") == 0)
         return 0;
     printf(RED "\"%s\" is not a valid command.\n" RESET, args[0]);
     return -1;
@@ -281,7 +299,7 @@ int main(int argc, char **argv)
     fd_set available_sockets, ready_sockets; // Variáveis para guardar o conjunto de sockets
     struct sockaddr_in client_addr, tcp_client_addr;
     socklen_t client_addrlen, tcp_client_addrlen;
-    char ** args;
+    char **args;
 
     // check arguments
     if (argc != 4)
@@ -313,16 +331,18 @@ int main(int argc, char **argv)
     command_list(node_i, node_ip, node_port);
 
     // ** Don't forget to free in the end!!!
-    args = malloc(4*sizeof(char*));
-    for(int i=0;i<4;i++){
-        args[i]= malloc(BUFFER_SIZE*sizeof(char));
+    args = malloc(4 * sizeof(char *));
+    for (int i = 0; i < 4; i++)
+    {
+        args[i] = malloc(BUFFER_SIZE * sizeof(char));
     }
 
     int num_read = get_command(args);
-    while(mode = check_first_command(args, num_read, node) == -1){
+    while (mode = check_first_command(args, num_read, node) == -1)
+    {
         num_read = get_command(args);
     }
-    
+
     // create sockets to listen (only needs port number as ip is localhost)
     UDP_socket = UDP_setup(node->self_port);
     TCP_socket = TCP_setup(node->self_port);
@@ -339,14 +359,14 @@ int main(int argc, char **argv)
     // verifica qual a socket com id maior
     max_socket = UDP_socket > TCP_socket ? UDP_socket + 1 : TCP_socket + 1;
 
-    if (mode == 2) //pentry
+    if (mode == 2) // pentry
     {
         TCP_Prev_socket = self_send(args, node);
         node->fd_pred = TCP_Prev_socket;
         FD_SET(TCP_Prev_socket, &available_sockets);
         max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
     }
-    else if (mode = 1)//bentry
+    else if (mode = 1) // bentry
     {
     }
 
@@ -380,14 +400,24 @@ int main(int argc, char **argv)
         // TCP
         if (FD_ISSET(TCP_socket, &ready_sockets))
         {
+            int n_read, total;
+            char *temp_ptr;
+
             memset(message, '\0', BUFFER_SIZE);
+            temp_ptr = message;
             // accept connection from incoming socket and read it
             tcp_client_addrlen = sizeof(tcp_client_addr);
             if ((new_fd = accept(TCP_socket, (struct sockaddr *)&tcp_client_addr, &tcp_client_addrlen)) == -1)
                 exit(0);
-            if (n = read(new_fd, message, BUFFER_SIZE) == -1) /*error*/
-                exit(1);
-            sscanf(message, "%s %s %s %s",args[0], args[1], args[2], args[3]);
+            while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) != 0)
+            {
+                if (n_read < 0)
+                    exit(1);
+                temp_ptr += n_read;
+                total += n_read;
+            }
+            message[total] = "\0";
+            sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
 
             if (strcmp(args[0], "SELF") == 0)
             {
