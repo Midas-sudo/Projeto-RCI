@@ -191,7 +191,7 @@ int self_send(char **args, Node_struct *node)
     return Prev_node_fd;
 }
 
-void self_recieve()
+void self_receive()
 {
 }
 
@@ -209,29 +209,47 @@ int get_command(char** args){
 
 // checks if a command is valid aka if its new or pentry or bentry with the right args
 // returns 0 for "new", 1 for "pentry" and 2 for "bentry"
-int check_first_command(char **args, int num_read)
+int check_first_command(char **args, int num_read, Node_struct* node)
 {
     if(strcmp(args[0], "new") == 0 || strcmp(args[0], "n") == 0)
         return 0;
 
-    if (strcmp(args[0], "pentry") == 0 || strcmp(args[0], "p") == 0)
-    {
-        if(num_read != 4){
-            printf(YLW "Usage: pentry key key.ip key.port\n" RESET);
-            return -1;
-        }
-        printf("pentry args: %s %s %s\n", args[1], args[2], args[3]);
-        return 1;
-    }
     if (strcmp(args[0], "bentry") == 0 || strcmp(args[0], "b") == 0)
-    {   
+    {
         if(num_read != 4){
             printf(YLW "Usage: bentry key key.ip key.port\n" RESET);
             return -1;
         }
-        printf("bentry args: %s %s %s\n", args[1], args[2], args[3]);
+        //printf("bentry args: %s %s %s\n", args[1], args[2], args[3]);
+        return 1;
+    }
+    if (strcmp(args[0], "pentry") == 0 || strcmp(args[0], "p") == 0)
+    {   
+        if(num_read != 4){
+            printf(YLW "Usage: pentry key key.ip key.port\n" RESET);
+            return -1;
+        }
+        //printf("pentry args: %s %s %s\n", args[1], args[2], args[3]);
         return 2;
     }
+    if (strcmp(args[0], "chord") == 0 || strcmp(args[0], "c") == 0)
+    {   
+        if(num_read != 4){
+            printf(YLW "Usage: chord key key.ip key.port\n" RESET);
+            return -1;
+        }
+        return 3;
+    }
+    if(strcmp(args[0], "echord") == 0 || strcmp(args[0], "e") == 0 && node->chord_i != -1)
+        return 0;
+    if(strcmp(args[0], "show") == 0 || strcmp(args[0], "s") == 0)
+        return 0;
+    if(strcmp(args[0], "find") == 0 || strcmp(args[0], "f") == 0)
+        return 0;
+    if(strcmp(args[0], "leave") == 0 || strcmp(args[0], "l") == 0)
+        return 0;
+    if(strcmp(args[0], "exit") == 0 || strcmp(args[0], "e") == 0)
+        return 0;
     printf(RED "\"%s\" is not a valid command.\n" RESET, args[0]);
     return -1;
 }
@@ -280,7 +298,7 @@ int main(int argc, char **argv)
     }
 
     int num_read = get_command(args);
-    while(check_first_command(args, num_read) == -1){
+    while(check_first_command(args, num_read, node) == -1){
         num_read = get_command(args);
     }
     
