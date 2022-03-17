@@ -48,8 +48,12 @@ Node_struct *new_node(int i, char *ip, char *port)
     new_node->self_i = i;
     new_node->self_ip = ip;
     new_node->self_port = port;
+<<<<<<< HEAD
     new_node->chord_i = -1;
     new_node->is_online = 0;
+=======
+    new_node->succ_i = -1;
+>>>>>>> e0e83c148ef6b5e55ed43dcc26252abcb357af62
     return new_node;
 }
 
@@ -88,7 +92,7 @@ void command_list(int i, char *ip, char *port)
     printf("│" RESET "       (iv)  Key, IP Address, Port of node shortcut;\E[87G" IST "│\n");
     printf("│\E[87G│\n");
     printf("│" YLW "    find " ORG "k\E[87G" IST "│\n");
-    printf("│" RESET "     -Searches for the key " ORG "k" RESET " on the ring returning it's key, IP\E[87G" IST "│\n"); 
+    printf("│" RESET "     -Searches for the key " ORG "k" RESET " on the ring returning it's key, IP\E[87G" IST "│\n");
     printf("│" RESET "      address, and port;\E[87G" IST "│\n");
     printf("│\E[87G│\n");
     printf("│" YLW "    leave\E[87G" IST "│\n");
@@ -97,7 +101,7 @@ void command_list(int i, char *ip, char *port)
     printf("│" YLW "    exit\E[87G" IST "│\n");
     printf("│" RESET "     -Closes aplication; \E[87G" IST "│\n");
     printf("│" GRAY "      (The abriviation of this command only works if there is currently no shortcut)\E[87G" IST "│\n");
-    //printf("│" GRAY "                                  " IST "│\n");
+    // printf("│" GRAY "                                  " IST "│\n");
     printf("└─────────────────────────────────────────────────────────────────────────────────────┘\n" RESET);
     return;
 }
@@ -195,8 +199,25 @@ int self_send(char **args, Node_struct *node)
     return Prev_node_fd;
 }
 
-void self_receive()
+void self_recieve(char **args, Node_struct *node, int fd)
 {
+    char message[BUFFER_SIZE];
+    int n;
+    if (node->succ_i != -1)
+    {
+        sprintf(message, "PRED %s %s %s\n", args[0], args[1], args[2]);
+        n = write(node->fd_succ, message, sizeof(message));
+        if (n == -1)
+        {
+            /*ERROR*/
+            printf("Error sending TCP message to Sucessor!");
+            exit(1);
+        }
+    }
+    node->succ_i = atoi(args[0]);
+    node->succ_ip = args[1];
+    node->succ_port = args[2];
+    node->fd_succ = fd;
 }
 
 // prompts user for a command (and its args) and returns the number of args read
@@ -309,7 +330,7 @@ int check_command(char **args, int num_read, Node_struct* node)
 
 int main(int argc, char **argv)
 {
-    int node_i, UDP_socket, TCP_socket, TCP_Prev_socket, max_socket, error, n, new_fd;
+    int node_i, UDP_socket, TCP_socket, TCP_Prev_socket, max_socket, error, n, new_fd, mode;
     char command[BUFFER_SIZE], message[BUFFER_SIZE], *node_ip, *node_port;
     FILE *fp;
     Node_struct *node;
@@ -331,7 +352,10 @@ int main(int argc, char **argv)
         node_ip = argv[2];
         node_port = argv[3];
     }
-
+    args = malloc(3 * sizeof(char *));
+    args[0] = malloc(3 * sizeof(char));
+    args[1] = malloc(BUFFER_SIZE * sizeof(char));
+    args[2] = malloc(6 * sizeof(char));
     printf(IST "┌─Projecto─de─Redes─de─Computadores─e─Internet─────────────┐\n");
     printf("│" RESET "Base de Dados em Anel com Cordas         Ano Letivo 21/22 " IST "│\n");
     printf("│                                                          │\n");
@@ -371,6 +395,18 @@ int main(int argc, char **argv)
 
     // verifica qual a socket com id maior
     max_socket = UDP_socket > TCP_socket ? UDP_socket + 1 : TCP_socket + 1;
+
+    if (mode == 2) //pentry
+    {
+        TCP_Prev_socket = self_send(args, node);
+        node->fd_pred = TCP_Prev_socket;
+        FD_SET(TCP_Prev_socket, &available_sockets);
+        max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
+    }
+    else if (mode = 1)//bentry
+    {
+    }
+
     printf("Waiting for connections or command input\n");
     node->is_online = 1;
     write(1, INPUT, sizeof(INPUT));
@@ -409,7 +445,14 @@ int main(int argc, char **argv)
                 exit(0);
             if (n = read(new_fd, message, BUFFER_SIZE) == -1) /*error*/
                 exit(1);
-            printf("Received: %s\n", message);
+            sscanf(message, "%s %s %s %s",args[0], args[1], args[2], args[3]);
+
+            if (strcmp(args[0], "SELF") == 0)
+            {
+                self_recieve(args, node, new_fd);
+            }
+
+            printf("Recived: %s\n", message);
             close(new_fd);
         }
 
