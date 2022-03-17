@@ -37,6 +37,7 @@ typedef struct
 
     int fd_pred;
     int fd_succ;
+    int fd_cord;
 
     int is_online;
 } Node_struct;
@@ -201,7 +202,7 @@ int self_send(char **args, Node_struct *node)
         n_left -= n_written;
         *message += n_written;
     }
-
+    node->fd_pred = Prev_node_fd;
     return Prev_node_fd;
 }
 
@@ -225,10 +226,17 @@ void self_recieve(char **args, Node_struct *node, int fd)
             *message += n_written;
         }
     }
+    else
+    {
+    }
     node->succ_i = atoi(args[0]);
     node->succ_ip = args[1];
     node->succ_port = args[2];
     node->fd_succ = fd;
+}
+
+void pred_recieve(char **args, Node_struct *node)
+{
 }
 
 // prompts user for a command (and its args) and returns the number of args read
@@ -441,100 +449,137 @@ int main(int argc, char **argv)
         if (error < 0) /*ERROR*/
             exit(1);
 
-        // UDP
-        if (FD_ISSET(UDP_socket, &ready_sockets))
+        for (int i = 0; i < max_socket; i++)
         {
-            memset(message, '\0', BUFFER_SIZE);
-
-            memset(&client_addr, '\0', sizeof(struct sockaddr_in));
-            client_addrlen = sizeof(client_addr);
-            n = recvfrom(UDP_socket, message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_addrlen);
-            write(1, message, sizeof(message));
-            if (sendto(UDP_socket, "ACK", 3, 0, (struct sockaddr *)&client_addr, client_addrlen) < 0)
+            if (FD_ISSET(i, &ready_sockets))
             {
-                printf("TEMP Send failed\n");
-                exit(1);
-            };
+                if (i == UDP_socket)
+                {
+                    memset(message, '\0', BUFFER_SIZE);
+
+                    memset(&client_addr, '\0', sizeof(struct sockaddr_in));
+                    client_addrlen = sizeof(client_addr);
+                    n = recvfrom(UDP_socket, message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_addrlen);
+                    write(1, message, sizeof(message));
+                    if (sendto(UDP_socket, "ACK", 3, 0, (struct sockaddr *)&client_addr, client_addrlen) < 0)
+                    {
+                        printf("TEMP Send failed\n");
+                        exit(1);
+                    };
+                }
+                else if (i == TCP_socket)
+                {
+                    int n_read, total;
+                    char *temp_ptr;
+
+                    memset(message, '\0', BUFFER_SIZE);
+                    temp_ptr = message;
+                    // accept connection from incoming socket and read it
+                    tcp_client_addrlen = sizeof(tcp_client_addr);
+                    if ((new_fd = accept(TCP_socket, (struct sockaddr *)&tcp_client_addr, &tcp_client_addrlen)) == -1)
+                        exit(0);
+                    while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) != 0)
+                    {
+                        if (n_read < 0)
+                            exit(1);
+                        temp_ptr += n_read;
+                        total += n_read;
+                    }
+                    message[total] = "\0";
+                    sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
+
+                    if (strcmp(args[0], "SELF") == 0)
+                    {
+                        self_recieve(args, node, new_fd);
+                        if (node->fd_pred == -1)
+                        {
+                            TCP_Prev_socket = self_send(args, node);
+
+                            FD_SET(TCP_Prev_socket, &available_sockets);
+                            max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
+                        }
+                    }
+
+                    printf("Recived: %s\n", message);
+                    close(new_fd);
+                }
+                else if (i == STDIN_FILENO)
+                {
+
+                    num_read = get_command(args);
+                    mode = check_command(args, num_read, node);
+                    switch (mode)
+                    {
+                    case 1: // new
+                        break;
+
+                    case 2: // bentry
+                        break;
+
+                    case 3: // pentry
+                        TCP_Prev_socket = self_send(args, node);
+
+                        FD_SET(TCP_Prev_socket, &available_sockets);
+                        max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
+                        break;
+
+                    case 4: // chord
+                        break;
+
+                    case 5: // echord
+                        break;
+
+                    case 6: // show
+                        break;
+
+                    case 7: // find
+                        break;
+
+                    case 8: // leave
+                        break;
+
+                    case 9: // exit
+                        break;
+
+                    default:
+                        break;
+                    }
+
+                    write(1, INPUT, sizeof(INPUT));
+                }
+                else if (i == node->fd_pred)
+                {
+                    int n_read, total;
+                    char *temp_ptr;
+
+                    memset(message, '\0', BUFFER_SIZE);
+                    temp_ptr = message;
+
+                    while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) != 0)
+                    {
+                        if (n_read < 0)
+                            exit(1);
+                        temp_ptr += n_read;
+                        total += n_read;
+                    }
+                    message[total] = "\0";
+                    sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
+
+                    if (strcmp(args[0], "PRED") == 0)
+                    {
+                        close(node->fd_pred);
+                        FD_CLR(node->fd_pred, &available_sockets);
+                        TCP_Prev_socket = self_send(args, node);
+                        FD_SET(TCP_Prev_socket, &available_sockets);
+                        max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
+                        node->fd_pred = TCP_Prev_socket;
+                    }
+                }
+            }
         }
 
-        // TCP
-        if (FD_ISSET(TCP_socket, &ready_sockets))
-        {
-            int n_read, total;
-            char *temp_ptr;
-
-            memset(message, '\0', BUFFER_SIZE);
-            temp_ptr = message;
-            // accept connection from incoming socket and read it
-            tcp_client_addrlen = sizeof(tcp_client_addr);
-            if ((new_fd = accept(TCP_socket, (struct sockaddr *)&tcp_client_addr, &tcp_client_addrlen)) == -1)
-                exit(0);
-            while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) != 0)
-            {
-                if (n_read < 0)
-                    exit(1);
-                temp_ptr += n_read;
-                total += n_read;
-            }
-            message[total] = "\0";
-            sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
-
-            if (strcmp(args[0], "SELF") == 0)
-            {
-                self_recieve(args, node, new_fd);
-            }
-
-            printf("Recived: %s\n", message);
-            close(new_fd);
-        }
-
-        // STDIN
-        if (FD_ISSET(STDIN_FILENO, &ready_sockets))
-        {
-            num_read = get_command(args);
-            mode = check_command(args, num_read, node);
-            switch (mode)
-            {
-            case 1: // new
-                break;
-
-            case 2: // bentry
-                break;
-
-            case 3: // pentry
-                TCP_Prev_socket = self_send(args, node);
-
-                FD_SET(TCP_Prev_socket, &available_sockets);
-                max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
-                break;
-
-            case 4: // chord
-                break;
-
-            case 5: // echord
-                break;
-
-            case 6: // show
-                break;
-
-            case 7: // find
-                break;
-
-            case 8: // leave
-                break;
-
-            case 9: // exit
-                break;
-
-            default:
-                break;
-            }
-
-            write(1, INPUT, sizeof(INPUT));
-        }
+        // free merdas
+        // for (int i = 0; i < 3; i++)
+        //     free(args[i]);
+        // free(args);
     }
-    // free merdas
-    // for (int i = 0; i < 3; i++)
-    //     free(args[i]);
-    // free(args);
-}
