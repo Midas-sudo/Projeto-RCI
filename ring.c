@@ -19,6 +19,7 @@
 #define INPUT "\E[0;35m>>> \E[0m"
 
 int BUFFER_SIZE = 256;
+int verb = 0;
 // char** command_list = ["new", "bentry", "pentry", "chord", "echord", "show", "find", "leave"];
 
 typedef struct
@@ -56,6 +57,12 @@ Node_struct *new_node(int i, char *ip, char *port)
     new_node->fd_pred = -1;
     new_node->fd_cord = -1;
     return new_node;
+}
+
+void verbose(char *str)
+{
+    if (verb == 1)
+        printf(YLW "%s\n" RESET, str);
 }
 
 void command_list(int i, char *ip, char *port)
@@ -118,8 +125,11 @@ int UDP_setup(char *port)
 
     UDPfd = socket(AF_INET, SOCK_DGRAM, 0);
 
-    if (UDPfd == -1) /*error*/
+    if (UDPfd == -1)
+    { /*error*/
+        printf(RED "Error creating UDP listen socket.\n");
         exit(1);
+    }
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
@@ -127,12 +137,20 @@ int UDP_setup(char *port)
     hints.ai_flags = AI_PASSIVE;
 
     errcode = getaddrinfo(NULL, port, &hints, &res);
-    if (errcode != 0) /*Error*/
+    if (errcode != 0)
+    { /*Error*/
+        printf(RED "Error getting own adress info.\n");
         exit(1);
+    }
+    verbose("Got own address info");
 
     n = bind(UDPfd, res->ai_addr, res->ai_addrlen);
-    if (n == -1) /*Error*/
+    if (n == -1)
+    { /*Error*/
+        printf(RED "Error binding UDP port.\n");
         exit(1);
+    }
+    verbose("UDP port binded");
 
     return UDPfd;
 }
@@ -147,8 +165,11 @@ int TCP_setup(char *port)
 
     // create TCP socket
     TCPfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (TCPfd == -1) /*error*/
+    if (TCPfd == -1)
+    { /*error*/
+        printf(RED "Error creating TCP listen socket.\n");
         exit(1);
+    }
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
@@ -157,19 +178,26 @@ int TCP_setup(char *port)
 
     // get localhost ip address
     errcode = getaddrinfo(NULL, port, &hints, &res);
-    if (errcode != 0) /*Error*/
+    if (errcode != 0)
+    { /*Error*/
+        printf(RED "Error getting own adress info.\n");
         exit(1);
+    }
+    verbose("Got own address info");
 
     n = bind(TCPfd, res->ai_addr, res->ai_addrlen);
     if (n == -1)
     { /*Error*/
-        printf(RED "Error Binding" RESET);
+        printf(RED "Error binding TCP port.\n");
         exit(1);
     }
+    verbose("TCP port binded");
 
     if (listen(TCPfd, 4) == -1)
+    { /*Error*/
+        printf(RED "Error listening to TCP port.");
         exit(1);
-
+    }
     return TCPfd;
 }
 
@@ -182,20 +210,31 @@ int self_send(char **args, Node_struct *node)
     char message[BUFFER_SIZE];
 
     Prev_node_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (Prev_node_fd == -1) /*ERROR*/
+    if (Prev_node_fd == -1)
+    { /*ERROR*/
+        printf(RED "Error creating TCP connection socket.\n");
         exit(1);
+    }
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
     errcode = getaddrinfo(args[2], args[3], &hints, &res);
-    if (errcode != 0) /*ERROR*/
+    if (errcode != 0)
+    { /*ERROR*/
+        printf(RED "Error getting new connection address information.\n");
         exit(1);
+    }
+    verbose("Got connection address info");
 
     errcode = connect(Prev_node_fd, res->ai_addr, res->ai_addrlen);
-    if (errcode == -1) /*ERROR*/
+    if (errcode == -1)
+    { /*ERROR*/
+        printf(RED "Error establishing connection.\n");
         exit(1);
+    }
+    verbose("Succefully established connection");
 
     sprintf(message, "SELF %d %s %s\n", node->self_i, node->self_ip, node->self_port);
 
@@ -208,6 +247,8 @@ int self_send(char **args, Node_struct *node)
         n_left -= n_written;
         *message += n_written;
     }
+
+    verbose("TCP message sent");
     node->fd_pred = Prev_node_fd;
     return Prev_node_fd;
 }
@@ -218,27 +259,28 @@ void self_recieve(char **args, Node_struct *node, int fd)
     int n_left, n_written;
     if (node->succ_i != -1)
     {
-        sprintf(message, "PRED %s %s %s\n", args[0], args[1], args[2]);
+        verbose("Predecessor exits.");
+        sprintf(message, "PRED %s %s %s\n", args[1], args[2], args[3]);
+        n_left = sizeof(message);
         while (n_left > 0)
         {
             n_written = write(node->fd_succ, message, sizeof(message));
             if (n_written <= 0)
             {
                 /*ERROR*/
-                printf("Error sending TCP message to Sucessor!");
+                printf(RED "Error sending TCP message to predecessor!");
                 exit(1);
             }
             n_left -= n_written;
             *message += n_written;
         }
+        verbose("TCP message to predecessor written");
     }
-    else
-    {
-    }
-    node->succ_i = atoi(args[0]);
-    node->succ_ip = args[1];
-    node->succ_port = args[2];
+    node->succ_i = atoi(args[1]);
+    node->succ_ip = args[2];
+    node->succ_port = args[3];
     node->fd_succ = fd;
+    verbose("Sucessor information stored to node");
 }
 
 void pred_recieve(char **args, Node_struct *node)
@@ -377,8 +419,19 @@ int main(int argc, char **argv)
     // check arguments
     if (argc != 4)
     {
-        printf("Usage: ring i i.ip i.port\n");
-        exit(0);
+        if (argc == 5)
+        {
+            node_i = atoi(argv[1]);
+            node_ip = argv[2];
+            node_port = argv[3];
+            verb = 1;
+        }
+        else
+        {
+
+            printf("Usage: ring i i.ip i.port\n");
+            exit(0);
+        }
     }
     else
     {
@@ -386,6 +439,7 @@ int main(int argc, char **argv)
         node_ip = argv[2];
         node_port = argv[3];
     }
+
     args = malloc(3 * sizeof(char *));
     args[0] = malloc(3 * sizeof(char));
     args[1] = malloc(BUFFER_SIZE * sizeof(char));
@@ -420,6 +474,7 @@ int main(int argc, char **argv)
     // create sockets to listen (only needs port number as ip is localhost)
     UDP_socket = UDP_setup(node->self_port);
     TCP_socket = TCP_setup(node->self_port);
+    verbose("TCP and UDP listening sockets created.");
 
     //  Initialização do conjunto de sockets a 0
     FD_ZERO(&available_sockets);
@@ -436,6 +491,7 @@ int main(int argc, char **argv)
     if (mode == 2) // pentry
     {
         TCP_Prev_socket = self_send(args, node);
+        verbose("Self command sent to predecessor.");
         node->fd_pred = TCP_Prev_socket;
         FD_SET(TCP_Prev_socket, &available_sockets);
         max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
@@ -453,8 +509,11 @@ int main(int argc, char **argv)
         ready_sockets = available_sockets;
 
         error = select(max_socket, &ready_sockets, NULL, NULL, NULL);
-        if (error < 0) /*ERROR*/
+        if (error < 0)
+        { /*ERROR*/
+            printf(RED "File descriptor set ERROR.");
             exit(1);
+        }
         for (int i = 0; i < max_socket; i++)
         {
             if (FD_ISSET(i, &ready_sockets))
@@ -462,16 +521,17 @@ int main(int argc, char **argv)
                 if (i == UDP_socket)
                 {
                     memset(message, '\0', BUFFER_SIZE);
-
                     memset(&client_addr, '\0', sizeof(struct sockaddr_in));
                     client_addrlen = sizeof(client_addr);
                     n = recvfrom(UDP_socket, message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_addrlen);
+                    verbose("UDP message recieved.");
                     write(1, message, sizeof(message));
                     if (sendto(UDP_socket, "ACK", 3, 0, (struct sockaddr *)&client_addr, client_addrlen) < 0)
                     {
-                        printf("TEMP Send failed\n");
+                        printf(RED "ACK send failed\n");
                         exit(1);
                     };
+                    verbose("ACK response sent");
                 }
                 else if (i == TCP_socket)
                 {
@@ -483,7 +543,10 @@ int main(int argc, char **argv)
                     // accept connection from incoming socket and read it
                     tcp_client_addrlen = sizeof(tcp_client_addr);
                     if ((new_fd = accept(TCP_socket, (struct sockaddr *)&tcp_client_addr, &tcp_client_addrlen)) == -1)
+                    { /*ERROR*/
+                        printf(RED "TCP connection acceptance error.");
                         exit(0);
+                    }
                     n_read = read(new_fd, temp_ptr, BUFFER_SIZE);
                     // while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) > 1)
                     // {
@@ -494,19 +557,19 @@ int main(int argc, char **argv)
                     // }
                     // message[total] = "\0";
                     sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
-
+                    verbose("TCP message recived");
                     if (strcmp(args[0], "SELF") == 0)
                     {
                         self_recieve(args, node, new_fd);
+                        verbose("SELF command recieved.");
                         if (node->fd_pred == -1)
                         {
                             TCP_Prev_socket = self_send(args, node);
-
+                            verbose("Predecessor was missing, SELF sent");
                             FD_SET(TCP_Prev_socket, &available_sockets);
                             max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
                         }
                     }
-
                     printf("Recived: %s\n", message);
                 }
                 else if (i == STDIN_FILENO)
@@ -560,25 +623,27 @@ int main(int argc, char **argv)
 
                     memset(message, '\0', BUFFER_SIZE);
                     temp_ptr = message;
-
-                    while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) > 1)
-                    {
-                        if (n_read < 0)
-                            exit(1);
-                        temp_ptr += n_read;
-                        total += n_read;
-                    }
+                    n_read = read(i, temp_ptr, BUFFER_SIZE);
+                    // while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) > 1)
+                    // {
+                    //     if (n_read < 0)
+                    //         exit(1);
+                    //     temp_ptr += n_read;
+                    //     total += n_read;
+                    // }
                     // message[total] = "\0";
                     sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
-
+                    verbose("TCP message recieved on connection with predecessor");
                     if (strcmp(args[0], "PRED") == 0)
                     {
+                        verbose("PRED command recived.");
                         close(node->fd_pred);
                         FD_CLR(node->fd_pred, &available_sockets);
                         TCP_Prev_socket = self_send(args, node);
                         FD_SET(TCP_Prev_socket, &available_sockets);
                         max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
                         node->fd_pred = TCP_Prev_socket;
+                        verbose("Self sent to new predecessor and connection saved");
                     }
                 }
             }
