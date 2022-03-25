@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <string.h>
+#include <signal.h>
 
 #define RED "\E[1;31m"
 #define GRN "\E[32m"
@@ -285,7 +286,7 @@ void self_recieve(char **args, Node_struct *node, int fd)
     char message[BUFFER_SIZE];
     int n_left, n_written;
     printf("%d -- %d\n", atoi(args[1]), node->succ_i);
-    if (node->succ_i != -1 && atoi(args[1]) < node->succ_i)
+    if (!(node->succ_i == -1 || ((atoi(args[1]) - node->succ_i > 0 && node->succ_i > node->self_i) || atoi(args[1]) <= node->self_i)))
     {
         verbose("Predecessor exits.");
         sprintf(message, "PRED %s %s %s\n", args[1], args[2], args[3]);
@@ -304,6 +305,11 @@ void self_recieve(char **args, Node_struct *node, int fd)
             printf("PRED SENT: %s", message);
         }
         verbose("TCP message to predecessor written");
+    }
+    if (node->succ_i != -1)
+    {
+        /*Close old TCP connection, before storing new one.*/
+        close(node->fd_succ);
     }
     node->succ_i = atoi(args[1]);
     strcpy(node->succ_ip, args[2]);
@@ -466,6 +472,7 @@ int check_command(char **args, int num_read, Node_struct *node)
 
 int main(int argc, char **argv)
 {
+
     int node_i, UDP_socket, TCP_socket, TCP_Prev_socket, max_socket, error, n, new_fd;
     char command[BUFFER_SIZE], message[BUFFER_SIZE], *node_ip, *node_port;
     FILE *fp;
@@ -671,6 +678,7 @@ int main(int argc, char **argv)
                         node->succ_i = -1;
                         strcpy(node->succ_ip, "-1");
                         strcpy(node->succ_port, "-1");
+                        close(node->fd_succ);
                         break;
 
                     case 8: // exit
@@ -699,6 +707,15 @@ int main(int argc, char **argv)
                     //     total += n_read;
                     // }
                     // message[total] = "\0";
+                    if (n_read == 0)
+                    {
+                        /*Conexão de TCP fechada*/
+                        node->pred_i = -1;
+                        strcpy(node->pred_ip, "-1");
+                        strcpy(node->pred_port, "-1");
+                        close(node->fd_pred);
+                        FD_CLR(node->fd_pred, &available_sockets);
+                    }
                     sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
 
                     verbose("TCP message recieved on connection with predecessor");
