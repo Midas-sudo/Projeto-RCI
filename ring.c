@@ -48,6 +48,13 @@ typedef struct
     int is_online;
 } Node_struct;
 
+typedef struct
+{
+    int searched_key;
+    int seq_number;
+    struct sockaddr_in addr;
+} UDP_addr_list;
+
 Node_struct *new_node(int i, char *ip, char *port)
 {
     Node_struct *new_node;
@@ -345,6 +352,61 @@ void pred_recieve(char **args, Node_struct *node)
 {
 }
 
+void response_recieve(char **args, Node_struct *node, UDP_addr_list addr)
+{
+
+    if (args[1] == node->self_i) /*This was the initial node*/
+    {
+        printf("Chave %d: nó %d (%d:%d).", addr->searched_key, args[3], args[4], args[5]);
+    }
+    else
+    {
+        int dist = distancia(node, args[1]);
+        switch (dist)
+        {
+        case 1: /*Next node is closer to the initial node*/
+            res_send_TCP();
+            break;
+        case 2: /*Chord node is closer to the initial node*/
+            res_send_UDP();
+            break;
+        default:
+            printf(RED "RSP logic failed\n");
+            break;
+        }
+    }
+}
+void find_recieve(char **args, Node_struct *node, int dist)
+{
+    switch (dist)
+    {
+    case 0: /*This node is the owner of the searched key*/
+        dist = distancia(node, args[1]);
+        switch (dist)
+        {
+        case 1: /*Next node is closer to the initial node*/
+            res_send_TCP();
+            break;
+        case 2: /*Chord node is closer to the initial node*/
+            res_send_UDP();
+            break;
+        default:
+            printf(RED "RSP logic failed\n");
+            break;
+        }
+        break;
+    case 1: /*Next node is closer to the searched key*/
+        find_send_TCP();
+        break;
+    case 2: /*Chord node is closer to the searched key*/
+        find_send_UDP();
+        break;
+    default:
+        printf(RED "FND logic failed\n");
+        break;
+    }
+}
+
 void show(Node_struct *node)
 {
     printf("NODE:\n\t key: %d\n\t ip: %s\n\t port: %s\n", node->self_i, node->self_ip, node->self_port);
@@ -364,7 +426,7 @@ int get_command(char **args)
     // memset(args[3], 0, BUFFER_SIZE);
     write(1, INPUT, sizeof(INPUT));
     fgets(buffer, BUFFER_SIZE, stdin);
-    return sscanf(buffer, "%s %s %s %s", args[0], args[1], args[2], args[3]);
+    return sscanf(buffer, "%s %s %s %s %s", args[0], args[1], args[2], args[3], args[4]);
 }
 
 // checks if a command is valid
@@ -421,7 +483,7 @@ int check_command(char **args, int num_read, Node_struct *node)
         }
         return 3;
     }
-    if (strcmp(args[0], "echord") == 0 || strcmp(args[0], "e") == 0 && node->chord_i != -1)
+    if (strcmp(args[0], "dchord") == 0 || strcmp(args[0], "d") == 0 && node->chord_i != -1)
     {
         if (!node->is_online)
         {
@@ -482,6 +544,8 @@ int main(int argc, char **argv)
     socklen_t client_addrlen, tcp_client_addrlen;
     char **args;
     int num_read, mode;
+    UDP_addr_list addr_list[100];
+    int seq_number = 0;
 
     // check arguments
     if (argc != 4)
@@ -520,8 +584,8 @@ int main(int argc, char **argv)
     // prompt user for entering  a command and shows command list
     command_list(node_i, node_ip, node_port);
 
-    args = malloc(5 * sizeof(char *)); // ** Don't forget to free in the end!!!
-    for (int i = 0; i < 5; i++)
+    args = malloc(6 * sizeof(char *)); // ** Don't forget to free in the end!!!
+    for (int i = 0; i < 6; i++)
     {
         args[i] = malloc(BUFFER_SIZE * sizeof(char));
     }
@@ -594,6 +658,19 @@ int main(int argc, char **argv)
                         printf(RED "ACK send failed\n");
                         exit(1);
                     };
+
+                    sscanf(message, "%s %s %s %s %s", args[0], args[1], args[2], args[3], args[4], args[5]);
+                    if (strcmp(args[0], "FND") == 0)
+                    {
+                        /*Recieved Find request*/
+                        int dist = distancia(node, args[1]);
+                        find_recieve(args, node, dist);
+                    }
+                    else if (strcmp(args[0], "RSP") == 0)
+                    {
+                        /*Recieved response to find request*/
+                        response_recieve(args, node, addr_list[args[2]]);
+                    }
                     verbose("ACK response sent");
                 }
                 else if (i == TCP_socket)
@@ -619,7 +696,7 @@ int main(int argc, char **argv)
                     //     total += n_read;
                     // }
                     // message[total] = "\0";
-                    sscanf(message, "%s %s %s %s", args[0], args[1], args[2], args[3]);
+                    sscanf(message, "%s %s %s %s %s %s", args[0], args[1], args[2], args[3], args[4], args[5]);
                     // printf("%lu - %lu - %lu - %lu\n", strlen(args[0]), strlen(args[1]), strlen(args[2]), strlen(args[3]));
                     verbose("TCP message received");
                     if (strcmp(args[0], "SELF") == 0)
@@ -633,6 +710,17 @@ int main(int argc, char **argv)
                             FD_SET(TCP_Prev_socket, &available_sockets);
                             max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
                         }
+                    }
+                    else if (strcmp(args[0], "FND") == 0)
+                    {
+                        /*Recieved Find request*/
+                        int dist = distancia(node, args[1]);
+                        find_recieve(args, node, dist);
+                    }
+                    else if (strcmp(args[0], "RSP") == 0)
+                    {
+                        /*Recieved response to find request*/
+                        response_recieve(args, node, addr_list[args[2]]);
                     }
                     printf("Received: %s\n", message);
                     write(1, INPUT, sizeof(INPUT));
@@ -668,6 +756,33 @@ int main(int argc, char **argv)
                         break;
 
                     case 6: // find
+                        int dist = distancia(node, args[1]);
+
+                        switch (dist)
+                        {
+                        case 0: /*This node is the owner of the searched key*/
+                            printf("Chave %d: nó %d (%d:%d).", args[1], node->self_i, node->self_ip, node->self_port);
+                            break;
+                        case 1: /*Next node is closer to the searched key*/
+                            int process_id = seq_number;
+                            addr_list[process_id].seq_number = process_id;
+                            addr_list[process_id].searched_key = args[1];
+                            addr_list[process_id].addr = memset(&client_addr, '\0', sizeof(struct sockaddr_in));
+                            seq_number++;
+                            find_send_TCP(node, process_id, args[1]);
+                            break;
+                        case 2: /*Chord node is closer to the searched key*/
+                            int process_id = seq_number;
+                            addr_list[process_id].seq_number = process_id;
+                            addr_list[process_id].searched_key = args[1];
+                            addr_list[process_id].addr = memset(&client_addr, '\0', sizeof(struct sockaddr_in));
+                            seq_number++;
+                            find_send_UDP(node, process_id, args[1]);
+                            break;
+                        default:
+                            printf(RED "FND logic failed\n");
+                            break;
+                        }
                         break;
 
                     case 7: // leave
