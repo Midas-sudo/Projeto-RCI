@@ -384,6 +384,131 @@ void pred_receive(char **args, Node_struct *node)
 {
 }
 
+void efnd_send(char **args, Node_struct *node)
+{
+    struct addrinfo hints, *res;
+    struct sockaddr recv_addr;
+    socklen_t recv_addrlen;
+    int fd, errcode, n_tries = 0, max_tries = 5;
+    ssize_t n;
+    char message[BUFFER_SIZE], response[BUFFER_SIZE];
+    struct timeval tv;
+    memset(message, '\0', BUFFER_SIZE);
+
+    sprintf(message, "EFND %s", args[1]);
+
+    // create udp socket for sending and receiving
+    fd = socket(AF_INET, SOCK_DGRAM, 0); // UDP socket
+    if (fd == -1)
+        exit(1);
+    // set a timeout for the socket
+    tv.tv_sec = 2;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET;      // IPv4
+    hints.ai_socktype = SOCK_DGRAM; // UDP socket
+    // get peer's (chord node) adress info to send data
+    errcode = getaddrinfo(args[2], args[3], &hints, &res);
+    if (errcode != 0)
+        exit(1);
+
+    memset(&recv_addr, '\0', sizeof(struct sockaddr_in));
+    recv_addrlen = sizeof(recv_addr);
+    do
+    {
+        n = sendto(fd, message, sizeof(message), 0, res->ai_addr, res->ai_addrlen);
+        n_tries++;
+        if (n < sizeof(message))
+            printf(RED START "├─ERROR sending UDP message\n" RESET);
+        do
+        { // wait for acknowledgement from peer, ignores messages from other addresses
+            memset(response, '\0', BUFFER_SIZE);
+            if (n = recvfrom(fd, response, BUFFER_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addrlen) < 0)
+                break;                                                   // connection timed out
+        } while (strcmp(res->ai_addr->sa_data, recv_addr.sa_data) != 0); // aposto que esta comparação não vai funcionar
+        // received message from peer
+        // if using errno, error would be SOCTIMEDOUT but for now just use -1
+        if (n < 0)
+            continue;
+    } while (strcmp(response, "ACK") != 0 && n_tries <= max_tries);
+
+    if (n_tries > max_tries)
+        printf(RED START "├─ERROR tried to send message 5 times but didnt receive ACK\n" RESET);
+    else
+    {
+        verbose("Successfully sent UDP message and ACK received");
+        printf(START "├─EFND message sent helping node: %s\n", message);
+    }
+
+    freeaddrinfo(res);
+}
+
+void epred_send(char **args, Node_struct *node, int seq)
+{
+    struct addrinfo hints, *res;
+    struct sockaddr recv_addr;
+    socklen_t recv_addrlen;
+    int fd, errcode, n_tries = 0, max_tries = 5;
+    ssize_t n;
+    char message[BUFFER_SIZE], response[BUFFER_SIZE];
+    struct timeval tv;
+
+    memset(message, '\0', BUFFER_SIZE);
+    if (seq) // if its the node that started the search
+        sprintf(message, "EPRED %s %s %s", args[3], args[4], args[5]);
+    else
+        sprintf(message, "EPRED %d %s %s", node->self_i, node->self_ip, node->self_port);
+
+    // create udp socket for sending and receiving
+    fd = socket(AF_INET, SOCK_DGRAM, 0); // UDP socket
+    if (fd == -1)
+        exit(1);
+    // set a timeout for the socket
+    tv.tv_sec = 2;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET;      // IPv4
+    hints.ai_socktype = SOCK_DGRAM; // UDP socket
+    // get peer's (chord node) adress info to send data
+    errcode = getaddrinfo(node->chord_ip, node->chord_port, &hints, &res);
+    if (errcode != 0)
+        exit(1);
+
+    memset(&recv_addr, '\0', sizeof(struct sockaddr_in));
+    recv_addrlen = sizeof(recv_addr);
+    do
+    {
+        n = sendto(fd, message, sizeof(message), 0, res->ai_addr, res->ai_addrlen);
+        n_tries++;
+        if (n < sizeof(message))
+            printf(RED START "├─ERROR sending UDP message\n" RESET);
+        do
+        { // wait for acknowledgement from peer, ignores messages from other addresses
+            memset(response, '\0', BUFFER_SIZE);
+            if (n = recvfrom(fd, response, BUFFER_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addrlen) < 0)
+                break;                                                   // connection timed out
+        } while (strcmp(res->ai_addr->sa_data, recv_addr.sa_data) != 0); // aposto que esta comparação não vai funcionar
+        // received message from peer
+        // if using errno, error would be SOCTIMEDOUT but for now just use -1
+        if (n < 0)
+            continue;
+    } while (strcmp(response, "ACK") != 0 && n_tries <= max_tries);
+
+    if (n_tries > max_tries)
+        printf(RED START "├─ERROR tried to send message 5 times but didnt receive ACK\n" RESET);
+    else
+    {
+        verbose("Successfully sent UDP message and ACK received");
+        printf(START "├─FND message sent to chord: %s\n", message);
+    }
+
+    freeaddrinfo(res);
+}
+
 void find_send_TCP(char **args, Node_struct *node, int seq)
 {
     int n_left, n_written;
@@ -566,10 +691,19 @@ void response_send_UDP(char **args, Node_struct *node, int isfirst)
 void response_receive(char **args, Node_struct *node, UDP_addr_list addr)
 {
     int dist;
+    struct sockaddr_in empty;
+    memset(&empty, '\0', sizeof(struct sockaddr_in));
 
     if (atoi(args[1]) == node->self_i) /*This was the initial node*/
     {
-        printf(START IST "├─A chave %d está no nó %s (%s:%s).\n" RESET, addr.searched_key, args[3], args[4], args[5]);
+        if (addr.addr.sin_port != empty.sin_port)
+        {
+            epred_send(args, node, 1);
+        }
+        else
+        {
+            printf(START IST "├─A chave %d está no nó %s (%s:%s).\n" RESET, addr.searched_key, args[3], args[4], args[5]);
+        }
     }
     else
     {
@@ -782,6 +916,51 @@ int check_command(char **args, int num_read, Node_struct *node)
     return -1;
 }
 
+void find(char **args, Node_struct *node, UDP_addr_list *addr_list, int seq_number, struct sockaddr_in addr)
+{
+    struct sockaddr_in empty;
+    memset(&empty, '\0', sizeof(struct sockaddr_in));
+    int find_id;
+    int dist = check_dist(node, atoi(args[1]));
+    printf(START "│Search for the node with key %s has began!\n", args[1]);
+    switch (dist)
+    {
+    case 0: /*This node is the owner of the searched key*/
+        if (addr.sin_port != empty.sin_port)
+        {
+            epred_send(args, node, 0);
+        }
+        else
+        {
+            printf(START IST "├─A chave %s está no nó %d (%s:%s).\n" RESET, args[1], node->self_i, node->self_ip, node->self_port);
+            printf(START "└────\n");
+            write(1, INPUT, sizeof(INPUT));
+        }
+
+        break;
+    case 1: /*Next node is closer to the searched key*/
+        find_id = seq_number;
+        addr_list[find_id].seq_number = find_id;
+        addr_list[find_id].searched_key = atoi(args[1]);
+        addr_list[find_id].addr = addr;
+        seq_number++;
+        find_send_TCP(args, node, find_id);
+        break;
+    case 2: /*Chord node is closer to the searched key*/
+        find_id = seq_number;
+        addr_list[find_id].seq_number = find_id;
+        addr_list[find_id].searched_key = atoi(args[1]);
+        addr_list[find_id].addr = addr;
+        seq_number++;
+        find_send_UDP(args, node, find_id);
+        break;
+    default:
+        printf(RED START "├─FND logic failed\n" RESET);
+        printf(START "└────\n");
+        break;
+    }
+}
+
 void INThandler(int sig)
 {
     char c;
@@ -801,7 +980,7 @@ int main(int argc, char **argv)
     FILE *fp;
     Node_struct *node;
     fd_set available_sockets, ready_sockets; // Variáveis para guardar o conjunto de sockets
-    struct sockaddr_in client_addr, tcp_client_addr;
+    struct sockaddr_in client_addr, tcp_client_addr, addr;
     socklen_t client_addrlen, tcp_client_addrlen;
     char **args;
     int num_read, mode;
@@ -887,6 +1066,8 @@ int main(int argc, char **argv)
     }
     else if (mode == 1) // bentry
     {
+        node->is_online = 1;
+        efnd_send(args, node);
     }
     else if (mode == 0)
     {
@@ -932,15 +1113,26 @@ int main(int argc, char **argv)
                         if (strcmp(args[0], "FND") == 0)
                         {
                             verbose("Received FND via UDP");
-                            printf(START "│Recieved new search: %s\n", message);
+                            printf(START "│Received new search: %s\n", message);
                             find_receive(args, node);
                         }
                         else if (strcmp(args[0], "RSP") == 0)
                         {
-                            /*Recieved response to find request*/
+                            /*Received response to find request*/
                             verbose("Received RSP via UDP");
-                            printf(START "│Recieved new response: %s\n", message);
+                            printf(START "│Received new response: %s\n", message);
                             response_receive(args, node, addr_list[atoi(args[2])]);
+                        }
+                        else if (strcmp(args[0], "EFND"))
+                        {
+                            find(args, node, addr_list, seq_number, client_addr);
+                        }
+                        else if (strcmp(args[0], "EPRED"))
+                        {
+                            TCP_Prev_socket = self_send(args, node);
+                            node->fd_pred = TCP_Prev_socket;
+                            FD_SET(TCP_Prev_socket, &available_sockets);
+                            max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
                         }
                         printf(START "└────\n");
                         write(1, INPUT, sizeof(INPUT));
@@ -969,7 +1161,7 @@ int main(int argc, char **argv)
                         if (strcmp(args[0], "SELF") == 0)
                         {
                             self_receive(args, node, new_fd);
-                            verbose("SELF command recieved.");
+                            verbose("SELF command received.");
                             if (node->fd_pred == -1)
                             {
                                 TCP_Prev_socket = self_send(args, node);
@@ -1025,36 +1217,8 @@ int main(int argc, char **argv)
                         break;
 
                     case 6: // find
-                        dist = check_dist(node, atoi(args[1]));
-                        printf(START "│Search for the node with key %s has began!\n", args[1]);
-                        switch (dist)
-                        {
-                        case 0: /*This node is the owner of the searched key*/
-                            printf(START IST "├─A chave %s está no nó %d (%s:%s).\n" RESET, args[1], node->self_i, node->self_ip, node->self_port);
-                            printf(START "└────\n");
-                            write(1, INPUT, sizeof(INPUT));
-                            break;
-                        case 1: /*Next node is closer to the searched key*/
-                            find_id = seq_number;
-                            addr_list[find_id].seq_number = find_id;
-                            addr_list[find_id].searched_key = atoi(args[1]);
-                            memset(&addr_list[find_id].addr, '\0', sizeof(struct sockaddr_in));
-                            seq_number++;
-                            find_send_TCP(args, node, find_id);
-                            break;
-                        case 2: /*Chord node is closer to the searched key*/
-                            find_id = seq_number;
-                            addr_list[find_id].seq_number = find_id;
-                            addr_list[find_id].searched_key = atoi(args[1]);
-                            memset(&addr_list[find_id].addr, '\0', sizeof(struct sockaddr_in)); // isto tá mega sus
-                            seq_number++;
-                            find_send_UDP(args, node, find_id);
-                            break;
-                        default:
-                            printf(RED START "├─FND logic failed\n" RESET);
-                            printf(START "└────\n");
-                            break;
-                        }
+                        memset(&addr, '\0', sizeof(struct sockaddr_in));
+                        find(args, node, addr_list, seq_number, addr);
                         break;
 
                     case 7: // leave
@@ -1114,7 +1278,7 @@ int main(int argc, char **argv)
                     }
                     sscanf(message, "%s %s %s %s %s %s", args[0], args[1], args[2], args[3], args[4], args[5]);
 
-                    verbose("TCP message recieved on connection with predecessor");
+                    verbose("TCP message received on connection with predecessor");
                     if (strcmp(args[0], "PRED") == 0)
                     {
                         verbose("PRED command recived.");
@@ -1132,17 +1296,17 @@ int main(int argc, char **argv)
                     }
                     else if (strcmp(args[0], "FND") == 0)
                     {
-                        /*Recieved Find request*/
+                        /*Received Find request*/
                         verbose("Received FND via TCP");
-                        printf(START "├─Recieved new search: %s", message);
+                        printf(START "├─Received new search: %s", message);
                         find_receive(args, node);
                         write(1, INPUT, sizeof(INPUT));
                     }
                     else if (strcmp(args[0], "RSP") == 0)
                     {
-                        /*Recieved response to find request*/
+                        /*Received response to find request*/
                         verbose("Received RSP via TCP");
-                        printf(START "├─Recieved new response: %s", message);
+                        printf(START "├─Received new response: %s", message);
                         response_receive(args, node, addr_list[atoi(args[2])]);
                         write(1, INPUT, sizeof(INPUT));
                     }
