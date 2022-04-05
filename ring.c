@@ -878,6 +878,7 @@ int main(int argc, char **argv)
 
     if (mode == 2) // pentry
     {
+        node->is_online = 1;
         TCP_Prev_socket = self_send(args, node);
         verbose("Self command sent to predecessor.");
         node->fd_pred = TCP_Prev_socket;
@@ -889,11 +890,10 @@ int main(int argc, char **argv)
     }
     else if (mode == 0)
     {
+        node->is_online = 1;
         printf(START "Waiting for connections or command input\n");
         write(1, INPUT, sizeof(INPUT));
     }
-
-    node->is_online = 1;
 
     while (1)
     {
@@ -919,29 +919,32 @@ int main(int argc, char **argv)
                     n = recvfrom(UDP_socket, message, BUFFER_SIZE, 0, (struct sockaddr *)&client_addr, &client_addrlen);
                     verbose("UDP message received: \n");
                     // imediatly respond with "ACK"
-                    if (sendto(UDP_socket, "ACK", 3, 0, (struct sockaddr *)&client_addr, client_addrlen) < 3) //(was 0) n devia ser 3? se mandar 2 bytes fica podre
+                    if (node->is_online)
                     {
-                        printf(RED START "ACK send failed\n");
-                        exit(1);
-                    };
-                    verbose("ACK response sent");
+                        if (sendto(UDP_socket, "ACK", 3, 0, (struct sockaddr *)&client_addr, client_addrlen) < 3) //(was 0) n devia ser 3? se mandar 2 bytes fica podre
+                        {
+                            printf(RED START "ACK send failed\n");
+                            exit(1);
+                        };
+                        verbose("ACK response sent");
 
-                    sscanf(message, "%s %s %s %s %s %s", args[0], args[1], args[2], args[3], args[4], args[5]);
-                    if (strcmp(args[0], "FND") == 0)
-                    {
-                        verbose("Received FND via UDP");
-                        printf(START "│Recieved new search: %s\n", message);
-                        find_receive(args, node);
+                        sscanf(message, "%s %s %s %s %s %s", args[0], args[1], args[2], args[3], args[4], args[5]);
+                        if (strcmp(args[0], "FND") == 0)
+                        {
+                            verbose("Received FND via UDP");
+                            printf(START "│Recieved new search: %s\n", message);
+                            find_receive(args, node);
+                        }
+                        else if (strcmp(args[0], "RSP") == 0)
+                        {
+                            /*Recieved response to find request*/
+                            verbose("Received RSP via UDP");
+                            printf(START "│Recieved new response: %s\n", message);
+                            response_receive(args, node, addr_list[atoi(args[2])]);
+                        }
+                        printf(START "└────\n");
+                        write(1, INPUT, sizeof(INPUT));
                     }
-                    else if (strcmp(args[0], "RSP") == 0)
-                    {
-                        /*Recieved response to find request*/
-                        verbose("Received RSP via UDP");
-                        printf(START "│Recieved new response: %s\n", message);
-                        response_receive(args, node, addr_list[atoi(args[2])]);
-                    }
-                    printf(START "└────\n");
-                    write(1, INPUT, sizeof(INPUT));
                 }
                 else if (i == TCP_socket) // General Listen TCP
                 {
@@ -958,33 +961,27 @@ int main(int argc, char **argv)
                         exit(0);
                     }
                     n_read = read(new_fd, message, BUFFER_SIZE);
-                    // while (n_read = read(new_fd, temp_ptr, BUFFER_SIZE) > 1)
-                    // {
-                    //     if (n_read < 0)
-                    //         exit(1);
-                    //     temp_ptr += n_read;
-                    //     total += n_read;
-                    // }
-                    // message[total] = "\0";
-                    sscanf(message, "%s %s %s %s %s %s", args[0], args[1], args[2], args[3], args[4], args[5]);
-                    // printf("%lu - %lu - %lu - %lu\n", strlen(args[0]), strlen(args[1]), strlen(args[2]), strlen(args[3]));
-                    verbose("TCP message received");
-                    printf(START "├─Received: %s", message);
-                    if (strcmp(args[0], "SELF") == 0)
+                    if (node->is_online)
                     {
-                        self_receive(args, node, new_fd);
-                        verbose("SELF command recieved.");
-                        if (node->fd_pred == -1)
+                        sscanf(message, "%s %s %s %s %s %s", args[0], args[1], args[2], args[3], args[4], args[5]);
+                        verbose("TCP message received");
+                        printf(START "├─Received: %s", message);
+                        if (strcmp(args[0], "SELF") == 0)
                         {
-                            TCP_Prev_socket = self_send(args, node);
-                            verbose("Predecessor was missing, SELF sent");
-                            FD_SET(TCP_Prev_socket, &available_sockets);
-                            max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
+                            self_receive(args, node, new_fd);
+                            verbose("SELF command recieved.");
+                            if (node->fd_pred == -1)
+                            {
+                                TCP_Prev_socket = self_send(args, node);
+                                verbose("Predecessor was missing, SELF sent");
+                                FD_SET(TCP_Prev_socket, &available_sockets);
+                                max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
+                            }
+                            printf(START YLW "├─New connection established!" RESET "\n| ---%d─>%d─>%d---\n", node->pred_i, node->self_i, node->succ_i);
                         }
-                        printf(START YLW "├─New connection established!" RESET "\n| ---%d─>%d─>%d---\n", node->pred_i, node->self_i, node->succ_i);
+                        printf(START "└────\n");
+                        write(1, INPUT, sizeof(INPUT));
                     }
-                    printf(START "└────\n");
-                    write(1, INPUT, sizeof(INPUT));
                 }
                 else if (i == STDIN_FILENO) // General Listen STDIN
                 {
@@ -994,13 +991,16 @@ int main(int argc, char **argv)
                     switch (mode)
                     {
                     case 0: // new
+                        node->is_online = 1;
                         break;
 
                     case 1: // bentry
                         break;
 
                     case 2: // pentry
+                        node->is_online = 1;
                         TCP_Prev_socket = self_send(args, node);
+                        node->fd_pred = TCP_Prev_socket;
                         FD_SET(TCP_Prev_socket, &available_sockets);
                         max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
                         break;
