@@ -395,7 +395,7 @@ void efnd_send(char **args, Node_struct *node)
     struct timeval tv;
     memset(message, '\0', BUFFER_SIZE);
 
-    sprintf(message, "EFND %s", args[1]);
+    sprintf(message, "EFND %d", node->self_i);
 
     // create udp socket for sending and receiving
     fd = socket(AF_INET, SOCK_DGRAM, 0); // UDP socket
@@ -445,11 +445,10 @@ void efnd_send(char **args, Node_struct *node)
     freeaddrinfo(res);
 }
 
-void epred_send(char **args, Node_struct *node, int seq)
+void epred_send(char **args, Node_struct *node, struct sockaddr_in addr, int seq)
 {
-    struct addrinfo hints, *res;
     struct sockaddr recv_addr;
-    socklen_t recv_addrlen;
+    socklen_t addrlen;
     int fd, errcode, n_tries = 0, max_tries = 5;
     ssize_t n;
     char message[BUFFER_SIZE], response[BUFFER_SIZE];
@@ -470,28 +469,19 @@ void epred_send(char **args, Node_struct *node, int seq)
     tv.tv_usec = 0;
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_INET;      // IPv4
-    hints.ai_socktype = SOCK_DGRAM; // UDP socket
-    // get peer's (chord node) adress info to send data
-    errcode = getaddrinfo(node->chord_ip, node->chord_port, &hints, &res);
-    if (errcode != 0)
-        exit(1);
-
-    memset(&recv_addr, '\0', sizeof(struct sockaddr_in));
-    recv_addrlen = sizeof(recv_addr);
+    addrlen = sizeof(recv_addr);
     do
     {
-        n = sendto(fd, message, sizeof(message), 0, res->ai_addr, res->ai_addrlen);
+        n = sendto(fd, message, sizeof(message), 0, (struct sockaddr *)&addr, 8);
         n_tries++;
-        if (n < sizeof(message))
+        if ((n < sizeof(message)) == 1)
             printf(RED START "├─ERROR sending UDP message\n" RESET);
         do
         { // wait for acknowledgement from peer, ignores messages from other addresses
             memset(response, '\0', BUFFER_SIZE);
-            if (n = recvfrom(fd, response, BUFFER_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addrlen) < 0)
-                break;                                                   // connection timed out
-        } while (strcmp(res->ai_addr->sa_data, recv_addr.sa_data) != 0); // aposto que esta comparação não vai funcionar
+            if (n = recvfrom(fd, response, BUFFER_SIZE, 0, (struct sockaddr *)&recv_addr, &addrlen) < 0)
+                break;                                                                          // connection timed out
+        } while (strcmp(((struct sockaddr *)&addr)->sa_data, recv_addr.sa_data) != 0); // aposto que esta comparação não vai funcionar
         // received message from peer
         // if using errno, error would be SOCTIMEDOUT but for now just use -1
         if (n < 0)
@@ -506,7 +496,6 @@ void epred_send(char **args, Node_struct *node, int seq)
         printf(START "├─FND message sent to chord: %s\n", message);
     }
 
-    freeaddrinfo(res);
 }
 
 void find_send_TCP(char **args, Node_struct *node, int seq)
@@ -698,7 +687,7 @@ void response_receive(char **args, Node_struct *node, UDP_addr_list addr)
     {
         if (addr.addr.sin_port != empty.sin_port)
         {
-            epred_send(args, node, 1);
+            epred_send(args, node, addr.addr, 1);
         }
         else
         {
@@ -928,7 +917,7 @@ void find(char **args, Node_struct *node, UDP_addr_list *addr_list, int seq_numb
     case 0: /*This node is the owner of the searched key*/
         if (addr.sin_port != empty.sin_port)
         {
-            epred_send(args, node, 0);
+            epred_send(args, node, addr, 0);
         }
         else
         {
@@ -1123,11 +1112,11 @@ int main(int argc, char **argv)
                             printf(START "│Received new response: %s\n", message);
                             response_receive(args, node, addr_list[atoi(args[2])]);
                         }
-                        else if (strcmp(args[0], "EFND"))
+                        else if (strcmp(args[0], "EFND") == 0)
                         {
                             find(args, node, addr_list, seq_number, client_addr);
                         }
-                        else if (strcmp(args[0], "EPRED"))
+                        else if (strcmp(args[0], "EPRED") == 0)
                         {
                             TCP_Prev_socket = self_send(args, node);
                             node->fd_pred = TCP_Prev_socket;
