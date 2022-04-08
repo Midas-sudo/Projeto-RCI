@@ -23,7 +23,6 @@
 
 int BUFFER_SIZE = 256;
 int verb = 0;
-// char** command_list = ["new", "bentry", "pentry", "chord", "echord", "show", "find", "leave"];
 
 typedef struct
 {
@@ -164,7 +163,7 @@ int dist(int i, int j)
 int check_dist(Node_struct *node, int key)
 {
     int dist_self = dist(node->self_i, key);
-    int dist_succ = dist(node->succ_i, key);
+    int dist_succ = node->succ_i != -1 ? dist(node->succ_i, key) : 100;
     int dist_chord = node->chord_i != -1 ? dist(node->chord_i, key) : 100; // if there is no chord distance is infinite
 
     if (dist_self < dist_succ && dist_self < dist_chord)
@@ -325,7 +324,7 @@ void self_receive(char **args, Node_struct *node, int fd)
     char message[BUFFER_SIZE];
     int n_left, n_written;
     // printf("%d -- %d\n", atoi(args[1]), node->succ_i);
-    if (node->succ_i != -1 && (node->self_i < atoi(args[1]) && atoi(args[1]) < node->succ_i) || (atoi(args[1]) < node->succ_i && node->succ_i < node->self_i))
+    if (node->succ_i != -1 && ((node->self_i < atoi(args[1]) && atoi(args[1]) < node->succ_i) || (atoi(args[1]) < node->succ_i && node->succ_i < node->self_i) || (node->succ_i < node->self_i && node->self_i < atoi(args[1]))))
     {
         verbose("Predecessor exits.");
         sprintf(message, "PRED %s %s %s\n", args[1], args[2], args[3]);
@@ -472,6 +471,7 @@ void epred_send(char **args, Node_struct *node, struct sockaddr_in addr, int seq
     if (seq) // if its the node that started the search
         sprintf(message, "EPRED %s %s %s", args[3], args[4], args[5]);
     else
+
         sprintf(message, "EPRED %d %s %s", node->self_i, node->self_ip, node->self_port);
 
     // create udp socket for sending and receiving
@@ -675,7 +675,7 @@ void response_send_UDP(char **args, Node_struct *node, int isfirst)
         } while (strcmp(res->ai_addr->sa_data, recv_addr.sa_data) != 0); // aposto que esta comparação não vai funcionar
         // received message from peer
         // if using erro, error would be SOCTIMEDOUT but for now just use -1
-    } while ((n < 0 || strcmp(message, "ACK") != 0) && n_tries <= max_tries);
+    } while ((n < 0 || strcmp(response, "ACK") != 0) && n_tries <= max_tries);
 
     if (n_tries > max_tries)
     {
@@ -723,7 +723,7 @@ void response_receive(char **args, Node_struct *node, UDP_addr_list addr)
             break;
         }
     }
-    printf(START "└────\n");
+    // printf(START "└────\n");
 }
 
 void find_receive(char **args, Node_struct *node)
@@ -1188,6 +1188,12 @@ int main(int argc, char **argv)
                         break;
 
                     case 1: // bentry
+                        node->is_online = 1;
+                        args = efnd_send(args, node);
+                        TCP_Prev_socket = self_send(args, node);
+                        node->fd_pred = TCP_Prev_socket;
+                        FD_SET(TCP_Prev_socket, &available_sockets);
+                        max_socket = max_socket > TCP_Prev_socket ? max_socket : TCP_Prev_socket + 1;
                         break;
 
                     case 2: // pentry
