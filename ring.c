@@ -327,6 +327,7 @@ int self_send(char **args, Node_struct *node)
 
     sprintf(message, "SELF %d %s %s\n", node->self_i, node->self_ip, node->self_port);
 
+    log_info(message, "TCPout");
     n_left = strlen(message);
     while (n_left > 0)
     {
@@ -336,7 +337,6 @@ int self_send(char **args, Node_struct *node)
         n_left -= n_written;
         *message += n_written;
     }
-    log_info(message, "TCPout");
     verbose("TCP message sent");
     node->fd_pred = Prev_node_fd;
     node->pred_i = atoi(args[1]);
@@ -355,10 +355,10 @@ void self_receive(char **args, Node_struct *node, int fd)
     {
         verbose("Predecessor exits.");
         sprintf(message, "PRED %s %s %s\n", args[1], args[2], args[3]);
-        n_left = sizeof(message);
+        n_left = strlen(message);
         while (n_left > 0)
         {
-            n_written = write(node->fd_succ, message, sizeof(message));
+            n_written = write(node->fd_succ, message, strlen(message));
             if (n_written <= 0)
             { /*ERROR*/
                 printf(RED START "├─Error sending TCP message to predecessor!");
@@ -391,10 +391,10 @@ void pred_send(Node_struct *node)
 
     sprintf(message, "PRED %d %s %s\n", node->pred_i, node->pred_ip, node->pred_port);
 
-    n_left = sizeof(message);
+    n_left = strlen(message);
     while (n_left > 0)
     {
-        n_written = write(node->fd_succ, message, sizeof(message));
+        n_written = write(node->fd_succ, message, strlen(message));
         if (n_written <= 0)
             exit(1);
         n_left -= n_written;
@@ -549,10 +549,10 @@ void find_send_TCP(char **args, Node_struct *node, int seq)
     else
         sprintf(message, "FND %s %s %s %s %s\n", args[1], args[2], args[3], args[4], args[5]);
     strcpy(temp, message);
-    n_left = sizeof(message);
+    n_left = strlen(message);
     while (n_left > 0)
     {
-        n_written = write(node->fd_succ, message, sizeof(message));
+        n_written = write(node->fd_succ, message, strlen(message));
         if (n_written <= 0)
             exit(1);
         n_left -= n_written;
@@ -638,10 +638,10 @@ void response_send_TCP(char **args, Node_struct *node, int isfirst)
     else
         sprintf(message, "RSP %s %s %s %s %s\n", args[1], args[2], args[3], args[4], args[5]);
     strcpy(temp, message);
-    n_left = sizeof(message);
+    n_left = strlen(message);
     while (n_left > 0)
     {
-        n_written = write(node->fd_succ, message, sizeof(message));
+        n_written = write(node->fd_succ, message, strlen(message));
         if (n_written <= 0)
             exit(1);
         n_left -= n_written;
@@ -1115,6 +1115,8 @@ int main(int argc, char **argv)
                     {
                     case 0: // new
                         setup(&available_sockets, node, &max_socket, &TCP_fd, &UDP_fd);
+                        printf(START "|Waiting for connections or command input\n");
+                        printf(START "└────\n");
                         break;
 
                     case 1: // bentry
