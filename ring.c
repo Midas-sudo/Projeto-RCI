@@ -1033,7 +1033,7 @@ void setup(fd_set *available_sockets, Node_struct *node, int *max_socket, int *T
     verbose("TCP and UDP listening sockets created.");
 }
 
-void leave(Node_struct *node)
+void leave(Node_struct *node, fd_set *available_sockets)
 {
     if (node->pred_i != node->self_i)
     {
@@ -1043,13 +1043,17 @@ void leave(Node_struct *node)
     node->chord_i = -1;
     strcpy(node->chord_ip, "-1");
     strcpy(node->chord_port, "-1");
+
     node->pred_i = -1;
     strcpy(node->pred_ip, "-1");
     strcpy(node->pred_port, "-1");
+    FD_CLR(node->fd_pred, available_sockets);
     close(node->fd_pred);
+
     node->succ_i = -1;
     strcpy(node->succ_ip, "-1");
     strcpy(node->succ_port, "-1");
+    FD_CLR(node->fd_succ, available_sockets);
     close(node->fd_succ);
     node->is_online = 0;
 }
@@ -1153,7 +1157,7 @@ int main(int argc, char **argv)
                         break;
 
                     case 7: // leave
-                        leave(node);
+                        leave(node, &available_sockets);
                         break;
 
                     case 8: // exit
