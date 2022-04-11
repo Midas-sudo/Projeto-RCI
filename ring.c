@@ -327,10 +327,10 @@ int self_send(char **args, Node_struct *node)
 
     sprintf(message, "SELF %d %s %s\n", node->self_i, node->self_ip, node->self_port);
 
-    n_left = sizeof(message);
+    n_left = strlen(message);
     while (n_left > 0)
     {
-        n_written = write(Prev_node_fd, message, sizeof(message));
+        n_written = write(Prev_node_fd, message, strlen(message));
         if (n_written <= 0)
             exit(1);
         n_left -= n_written;
@@ -342,6 +342,7 @@ int self_send(char **args, Node_struct *node)
     node->pred_i = atoi(args[1]);
     strcpy(node->pred_ip, args[2]);
     strcpy(node->pred_port, args[3]);
+    printf("%d %d %s\n", node->fd_pred, node->pred_i, node->pred_port);
     return Prev_node_fd;
 }
 
@@ -349,7 +350,7 @@ void self_receive(char **args, Node_struct *node, int fd)
 {
     char message[BUFFER_SIZE];
     int n_left, n_written;
-    // printf("%d -- %d\n", atoi(args[1]), node->succ_i);
+    printf("%d %d %d\n", atoi(args[1]), node->succ_i, node->self_i);
     if (node->succ_i != -1 && ((node->self_i < atoi(args[1]) && atoi(args[1]) < node->succ_i) || (atoi(args[1]) < node->succ_i && node->succ_i < node->self_i) || (node->succ_i < node->self_i && node->self_i < atoi(args[1]))))
     {
         verbose("Predecessor exits.");
@@ -475,7 +476,7 @@ char **efnd_send(char **args, Node_struct *node)
             continue;
         sscanf(response, "%s %s %s %s %s %s", args[0], args[1], args[2], args[3], args[4], args[5]);
     } while (strcmp(args[0], "EPRED") != 0 && n_tries <= max_tries);
-    if (sendto(fd, "ACK", 3, 0, res->ai_addr, res->ai_addrlen) < 3) //(was 0) n devia ser 3? se mandar 2 bytes fica podre
+    if (sendto(fd, "ACK", 3, 0, (struct sockaddr *)&recv_addr, recv_addrlen) < 3) //(was 0) n devia ser 3? se mandar 2 bytes fica podre
     {
         printf(RED START "ACK send failed\n");
         exit(1);
@@ -1094,6 +1095,8 @@ int main(int argc, char **argv)
     {
         write(1, INPUT, sizeof(INPUT));
         ready_sockets = available_sockets; // Cópia de lista de sockets devido ao comportamento destrutivo do select()
+        seq_number = seq_number == 99 ? 1 : seq_number;
+
         error = select(max_socket, &ready_sockets, NULL, NULL, NULL);
         if (error < 0)
         { /*ERROR*/
@@ -1272,9 +1275,10 @@ int main(int argc, char **argv)
                     clean_args(args, BUFFER_SIZE);
 
                     temp_ptr = message;
-                    n_read = read(i, message, BUFFER_SIZE);
+                    n_read = read(node->fd_pred, message, BUFFER_SIZE);
                     if (n_read == 0)
                     {
+                        // printf("Teste\n");
                         /*Conexão de TCP fechada*/
                         node->pred_i = -1;
                         strcpy(node->pred_ip, "-1");
@@ -1317,6 +1321,13 @@ int main(int argc, char **argv)
                         printf(START "├─Received new response: %s", message);
                         response_receive(args, node, addr_list[atoi(args[2])]);
                         write(1, INPUT, sizeof(INPUT));
+                    }
+                    else if (strcmp(args[0], "SELF") == 0)
+                    {
+                        node->succ_i = atoi(args[1]);
+                        strcpy(node->succ_ip, args[2]);
+                        strcpy(node->succ_port, args[3]);
+                        node->fd_succ = node->fd_pred;
                     }
                 }
             }
