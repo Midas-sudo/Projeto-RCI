@@ -84,6 +84,8 @@ Node_struct *new_node(int i, char *ip, char *port)
     strcpy(new_node->succ_port, "-1");
     strcpy(new_node->pred_ip, "-1");
     strcpy(new_node->pred_port, "-1");
+    strcpy(new_node->chord_ip, "-1");
+    strcpy(new_node->chord_port, "-1");
 
     new_node->fd_succ = -1;
     new_node->fd_pred = -1;
@@ -289,16 +291,114 @@ int TCP_setup(char *port)
     return TCPfd;
 }
 
+/* isto tá uma merda */
+void read_tcp(int fd, char *message, int message_size)
+{
+    int n_read, n_left, n_bytes;
+    char *ptr, *buffer = message;
+
+    n_read = read(fd, message, BUFFER_SIZE);
+
+    /* isto tá uma merda */
+    n_left = n_bytes;
+    ptr = buffer;
+    while (n_left > 0)
+    {
+        n_read = read(fd, ptr, n_left);
+        if (n_read == 1)
+            exit(1);
+        else if (n_read == 0)
+            break; // closed by peer
+        n_left -= n_read;
+        ptr += n_read;
+    }
+    n_read = n_bytes - n_left;
+    buffer[n_read] = '\0';
+}
+
+int send_tcp(int fd, char *message)
+{
+    int n_left, n_written;
+    char *ptr = message;
+
+    n_left = strlen(message);
+    while (n_left > 0)
+    {
+        n_written = write(fd, ptr, n_left);
+        if (n_written <= 0)
+            return -1;
+        n_left -= n_written;
+        ptr += n_written;
+    }
+    return 0;
+}
+
+int send_udp(char *ip, char *port, char *message, int max_tries)
+{
+    struct addrinfo hints, *res;
+    struct sockaddr recv_addr;
+    socklen_t recv_addrlen;
+    int fd, errcode, n_tries = 0;
+    ssize_t n;
+    char *response;
+    struct timeval tv;
+
+    response = malloc(BUFFER_SIZE * sizeof(char));
+    // create udp socket for sending and receiving
+    fd = socket(AF_INET, SOCK_DGRAM, 0); // UDP socket
+    if (fd == -1)
+        exit(1);
+    // set a timeout for the socket
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET;      // IPv4
+    hints.ai_socktype = SOCK_DGRAM; // UDP socket
+    // get peer's (chord node) adress info to send data
+    errcode = getaddrinfo(ip, port, &hints, &res);
+    if (errcode != 0)
+        exit(1);
+
+    memset(&recv_addr, '\0', sizeof(struct sockaddr_in));
+    recv_addrlen = sizeof(recv_addr);
+    do
+    {
+        n = sendto(fd, message, strlen(message), 0, res->ai_addr, res->ai_addrlen);
+        n_tries++;
+        if (n < strlen(message))
+            printf(RED START "├─ERROR sending full UDP message\n" RESET);
+        do
+        { // wait for acknowledgement from peer, ignores messages from other addresses
+            memset(response, '\0', BUFFER_SIZE);
+            if (n = recvfrom(fd, response, BUFFER_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addrlen) < 0)
+                break;                                                   // connection timed out
+        } while (strcmp(res->ai_addr->sa_data, recv_addr.sa_data) != 0); // aposto que esta comparação não vai funcionar
+        // received message from peer
+        if (n < 0) // error because socked timed out
+            continue;
+    } while (strcmp(response, "ACK") != 0 && n_tries <= max_tries);
+
+    if (n_tries > max_tries)
+        return -1;
+
+    close(fd);
+    free(response);
+    freeaddrinfo(res);
+    return 0;
+}
+
 int self_send(char **args, Node_struct *node)
 {
-    int Prev_node_fd, errcode, n_left, n_written;
+    int Pred_fd, errcode, n_left, n_written;
     socklen_t addrlen;
     struct addrinfo hints, *res;
     struct sockaddr_in addr;
     char message[BUFFER_SIZE];
 
-    Prev_node_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (Prev_node_fd == -1)
+    Pred_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (Pred_fd == -1)
     { /*ERROR*/
         printf(RED START "├─Error creating TCP connection socket.\n");
         exit(1);
@@ -307,43 +407,36 @@ int self_send(char **args, Node_struct *node)
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
-
     errcode = getaddrinfo(args[2], args[3], &hints, &res);
-    printf("%s %s", args[2], args[3]);
     if (errcode != 0)
     { /*ERROR*/
         printf(RED START "├─Error getting new connection address information.\n");
         exit(1);
     }
-    verbose("Got connection address info");
+    verbose("Got predecessor connection address info");
 
-    errcode = connect(Prev_node_fd, res->ai_addr, res->ai_addrlen);
+    errcode = connect(Pred_fd, res->ai_addr, res->ai_addrlen);
     if (errcode == -1)
     { /*ERROR*/
         printf(RED START "├─Error establishing connection.\n");
         exit(1);
     }
-    verbose("Succefully established connection");
+    verbose("Succefully established connection with predecessor");
 
     sprintf(message, "SELF %d %s %s\n", node->self_i, node->self_ip, node->self_port);
-
-    log_info(message, "TCPout");
-    n_left = strlen(message);
-    while (n_left > 0)
+    errcode = send_tcp(Pred_fd, message);
+    if (errcode)
     {
-        n_written = write(Prev_node_fd, message, strlen(message));
-        if (n_written <= 0)
-            exit(1);
-        n_left -= n_written;
-        *message += n_written;
+        /* error handling */
     }
-    verbose("TCP message sent");
-    node->fd_pred = Prev_node_fd;
+    log_info(message, "TCPout");
+    verbose("TCP message \"SELF\" sent to predecessor");
+
+    node->fd_pred = Pred_fd;
     node->pred_i = atoi(args[1]);
     strcpy(node->pred_ip, args[2]);
     strcpy(node->pred_port, args[3]);
-    printf("%d %d %s\n", node->fd_pred, node->pred_i, node->pred_port);
-    return Prev_node_fd;
+    return Pred_fd;
 }
 
 void self_receive(char **args, Node_struct *node, int fd)
@@ -390,20 +483,14 @@ void pred_send(Node_struct *node)
     char message[BUFFER_SIZE];
 
     sprintf(message, "PRED %d %s %s\n", node->pred_i, node->pred_ip, node->pred_port);
-
-    n_left = strlen(message);
-    while (n_left > 0)
+    errcode = send_tcp(node->fd_succ, message);
+    if (errcode)
     {
-        n_written = write(node->fd_succ, message, strlen(message));
-        if (n_written <= 0)
-            exit(1);
-        n_left -= n_written;
-        *message += n_written;
+        /* error handling */
     }
-
-    // verbose("TCP message sent");
     log_info(message, "TCPout");
-    printf(START "├─PRED message sent: %s", message);
+    verbose("TCP message \"PRED\" sent to successor");
+    // printf(START "├─PRED message sent: %s", message);
     return;
 }
 
@@ -480,7 +567,7 @@ char **efnd_send(char **args, Node_struct *node)
     {
         printf(RED START "ACK send failed\n");
         exit(1);
-    };
+    }
     verbose("ACK response sent");
     freeaddrinfo(res);
     return args;
@@ -541,183 +628,96 @@ void epred_send(char **args, Node_struct *node, struct sockaddr_in addr, int seq
 
 void find_send_TCP(char **args, Node_struct *node, int seq)
 {
-    int n_left, n_written;
+    int n_left, n_written, errcode;
     char message[BUFFER_SIZE], temp[BUFFER_SIZE];
 
     if (seq) // if its the node that started the search
         sprintf(message, "FND %s %d %d %s %s\n", args[1], seq, node->self_i, node->self_ip, node->self_port);
     else
         sprintf(message, "FND %s %s %s %s %s\n", args[1], args[2], args[3], args[4], args[5]);
-    strcpy(temp, message);
-    n_left = strlen(message);
-    while (n_left > 0)
+
+    errcode = send_tcp(node->fd_succ, message);
+    if (errcode)
     {
-        n_written = write(node->fd_succ, message, strlen(message));
-        if (n_written <= 0)
-            exit(1);
-        n_left -= n_written;
-        *message += n_written;
+        /* error handling */
     }
-    verbose("TCP message sent");
     log_info(message, "TCPout");
-    printf(START "├─FND message sent to successor: %s", temp);
+    verbose("TCP message \"FND\" sent to successor");
+    // printf(START "├─FND message sent to successor: %s", message);
     return;
 }
 
 void find_send_UDP(char **args, Node_struct *node, int seq)
 {
-    struct addrinfo hints, *res;
-    struct sockaddr recv_addr;
-    socklen_t recv_addrlen;
-    int fd, errcode, n_tries = 0, max_tries = 5;
-    ssize_t n;
-    char message[BUFFER_SIZE], response[BUFFER_SIZE];
-    struct timeval tv;
+    int errcode;
+    char *message;
 
+    message = malloc(BUFFER_SIZE * sizeof(char));
     memset(message, '\0', BUFFER_SIZE);
     if (seq) // if its the node that started the search
         sprintf(message, "FND %s %d %d %s %s", args[1], seq, node->self_i, node->self_ip, node->self_port);
     else
         sprintf(message, "FND %s %s %s %s %s", args[1], args[2], args[3], args[4], args[5]);
 
-    // create udp socket for sending and receiving
-    fd = socket(AF_INET, SOCK_DGRAM, 0); // UDP socket
-    if (fd == -1)
-        exit(1);
-    // set a timeout for the socket
-    tv.tv_sec = 2;
-    tv.tv_usec = 0;
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_INET;      // IPv4
-    hints.ai_socktype = SOCK_DGRAM; // UDP socket
-    // get peer's (chord node) adress info to send data
-    errcode = getaddrinfo(node->chord_ip, node->chord_port, &hints, &res);
-    if (errcode != 0)
-        exit(1);
-
-    memset(&recv_addr, '\0', sizeof(struct sockaddr_in));
-    recv_addrlen = sizeof(recv_addr);
-    do
+    errcode = send_udp(node->chord_ip, node->chord_port, message, 3);
+    if (errcode)
     {
-        n = sendto(fd, message, sizeof(message), 0, res->ai_addr, res->ai_addrlen);
-        n_tries++;
-        if (n < sizeof(message))
-            printf(RED START "├─ERROR sending UDP message\n" RESET);
-        do
-        { // wait for acknowledgement from peer, ignores messages from other addresses
-            memset(response, '\0', BUFFER_SIZE);
-            if (n = recvfrom(fd, response, BUFFER_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addrlen) < 0)
-                break;                                                   // connection timed out
-        } while (strcmp(res->ai_addr->sa_data, recv_addr.sa_data) != 0); // aposto que esta comparação não vai funcionar
-        // received message from peer
-        // if using errno, error would be SOCTIMEDOUT but for now just use -1
-        if (n < 0)
-            continue;
-    } while (strcmp(response, "ACK") != 0 && n_tries <= max_tries);
-
-    if (n_tries > max_tries)
-        printf(RED START "├─ERROR tried to send message 5 times but didnt receive ACK\n" RESET);
+        /* error handling */
+        printf(RED START "├─ERROR tried to send \"FND\" message 3 times but didnt receive ACK\n" RESET);
+    }
     else
     {
-        verbose("Successfully sent UDP message and ACK received");
+        verbose("Successfully sent UDP message \"FND\" and \"ACK\" received");
         printf(START "├─FND message sent to chord: %s\n", message);
     }
-
-    freeaddrinfo(res);
+    free(message);
 }
 
 void response_send_TCP(char **args, Node_struct *node, int isfirst)
 {
-    int n_left, n_written;
+    int n_left, n_written, errcode;
     char message[BUFFER_SIZE], temp[BUFFER_SIZE];
 
     if (isfirst) // if its the node that has the key and is now sending response
         sprintf(message, "RSP %s %s %d %s %s\n", args[3], args[2], node->self_i, node->self_ip, node->self_port);
     else
         sprintf(message, "RSP %s %s %s %s %s\n", args[1], args[2], args[3], args[4], args[5]);
-    strcpy(temp, message);
-    n_left = strlen(message);
-    while (n_left > 0)
+
+    errcode = send_tcp(node->fd_succ, message);
+    if (errcode)
     {
-        n_written = write(node->fd_succ, message, strlen(message));
-        if (n_written <= 0)
-            exit(1);
-        n_left -= n_written;
-        *message += n_written;
+        /* error handling */
     }
-    verbose("RSP message sent");
     log_info(message, "TCPout");
-    printf(START "├─RSP message sent to successor: %s", temp);
+    verbose("TCP message \"RSP\" sent to successor");
+    // printf(START "├─RSP message sent to successor: %s", temp);
     return;
 }
 
 void response_send_UDP(char **args, Node_struct *node, int isfirst)
 {
-    struct addrinfo hints, *res;
-    struct sockaddr recv_addr;
-    socklen_t recv_addrlen;
-    int fd, errcode, n_tries = 0, max_tries = 5;
-    ssize_t n;
-    char message[BUFFER_SIZE], response[BUFFER_SIZE];
-    ;
-    struct timeval tv;
+    int errcode;
+    char *message;
 
+    message = malloc(BUFFER_SIZE * sizeof(char));
+    memset(message, '\0', BUFFER_SIZE);
     if (isfirst) // if its the node that has the key and is now sending response
         sprintf(message, "RSP %s %s %d %s %s\n", args[3], args[2], node->self_i, node->self_ip, node->self_port);
     else
         printf(message, "RSP %s %s %s %s %s\n", args[1], args[2], args[3], args[4], args[5]);
 
-    // create udp socket for sending and receiving
-    fd = socket(AF_INET, SOCK_DGRAM, 0); // UDP socket
-    if (fd == -1)
-        exit(1);
-    // set a timeout for the socket
-    tv.tv_sec = 2;
-    tv.tv_usec = 0;
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_INET;      // IPv4
-    hints.ai_socktype = SOCK_DGRAM; // UDP socket
-
-    // get peer's (chord node) adress info to send data
-    errcode = getaddrinfo(node->chord_ip, node->chord_port, &hints, &res);
-    if (errcode != 0)
-        exit(1);
-
-    memset(&recv_addr, '\0', sizeof(struct sockaddr_in));
-    recv_addrlen = sizeof(recv_addr);
-    do
+    errcode = send_udp(node->chord_ip, node->chord_port, message, 3);
+    if (errcode)
     {
-        n = sendto(fd, message, sizeof(message), 0, res->ai_addr, res->ai_addrlen);
-        n_tries++;
-        if (n < sizeof(message))
-        {
-            printf(RED START "├─ERROR sending UDP message\n" RESET);
-        }
-        do
-        { // wait for acknowledgement from peer, ignores messages from other addresses
-            memset(response, '\0', BUFFER_SIZE);
-            if (n = recvfrom(fd, response, BUFFER_SIZE, 0, (struct sockaddr *)&recv_addr, &recv_addrlen) < 0)
-                break;                                                   // connection timed out
-        } while (strcmp(res->ai_addr->sa_data, recv_addr.sa_data) != 0); // aposto que esta comparação não vai funcionar
-        // received message from peer
-        // if using erro, error would be SOCTIMEDOUT but for now just use -1
-    } while ((n < 0 || strcmp(response, "ACK") != 0) && n_tries <= max_tries);
-
-    if (n_tries > max_tries)
-    {
-        printf(RED START "├─ERROR tried to send message 5 times but didnt receive ACK\n" RESET);
+        /* error handling */
+        printf(RED START "├─ERROR tried to send \"RSP\" message 3 times but didnt receive ACK\n" RESET);
     }
     else
     {
-        verbose("Successfully sent UDP message and ACK received");
+        verbose("Successfully sent UDP message \"RSP\" and \"ACK\" received");
         printf(START "├─RSP message sent to chord: %s\n", message);
     }
-
-    freeaddrinfo(res);
+    free(message);
 }
 
 void response_receive(char **args, Node_struct *node, UDP_addr_list addr)
@@ -915,6 +915,11 @@ int check_command(char **args, int num_read, Node_struct *node)
         if (strcmp(args[1], "") == 0)
         {
             printf(RED START "Usage: find k, where k is the key to be searched\n" RESET);
+            return -1;
+        }
+        if (strlen(args[1]) > 2 || atoi(args[1]) > 32 || args[1][0] < 48 || args[1][0] > 59 || args[1][1] < 48 || args[1][1] > 59)
+        {
+            printf(RED START "Usage: find k, k must be a number smaller than 32\n" RESET);
             return -1;
         }
         return 6;
