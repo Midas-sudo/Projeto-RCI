@@ -1158,12 +1158,14 @@ void leave(Node_struct *node, fd_set *available_sockets)
     strcpy(node->pred_port, "-1");
     FD_CLR(node->fd_pred, available_sockets);
     close(node->fd_pred);
+    node->fd_pred = -1;
 
     node->succ_i = -1;
     strcpy(node->succ_ip, "-1");
     strcpy(node->succ_port, "-1");
     FD_CLR(node->fd_succ, available_sockets);
     close(node->fd_succ);
+    node->fd_succ = -1;
     node->is_online = 0;
 
     FD_CLR(node->fd_TCP, available_sockets);
@@ -1365,7 +1367,7 @@ int main(int argc, char **argv)
                         {
                             self_receive(args, node, new_fd);
                             verbose("SELF command received.");
-                            if (node->fd_pred == -1)
+                            if (node->fd_pred == -1 || (node->pred_i == node->self_i && atoi(args[1]) != node->self_i))
                             {
                                 TCP_pred_fd = self_send(args, node);
                                 verbose("Predecessor was missing, SELF sent");
