@@ -964,6 +964,20 @@ int check_command(char **args, int num_read, Node_struct *node)
         }
         return 1;
     }
+    if (strcmp(args[0], "pbentry") == 0 || strcmp(args[0], "pb") == 0)
+    {
+        if (node->is_online)
+        {
+            printf(RED START "Node is already part of a ring. First use \"leave\" to leave the ring\n" RESET);
+            return -1;
+        }
+        if (num_read != 2)
+        {
+            printf(YLW START "Usage: pbentry key\n" RESET);
+            return -1;
+        }
+        return 10;
+    }
     if (strcmp(args[0], "pentry") == 0 || strcmp(args[0], "p") == 0)
     {
         if (node->is_online)
@@ -1290,7 +1304,18 @@ int main(int argc, char **argv)
                             exit(0);
                         }
                         break;
-
+                    case 10: // pbentry
+                        strcpy(args[0], "bentry");
+                        strcpy(args[2], "193.136.138.142");
+                        strcpy(args[3], "58107");
+                        printf(START YLW "This command only works inside the sigma network!");
+                        setup(&available_sockets, node, &max_socket, &TCP_fd, &UDP_fd);
+                        args = efnd_send(args, node);
+                        TCP_pred_fd = self_send(args, node);
+                        node->fd_pred = TCP_pred_fd;
+                        FD_SET(TCP_pred_fd, &available_sockets);
+                        max_socket = max_socket > TCP_pred_fd ? max_socket : TCP_pred_fd + 1;
+                        break;
                     default:
                         break;
                     }
