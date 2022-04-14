@@ -483,9 +483,9 @@ int self_send(char **args, Node_struct *node)
     errcode = send_tcp(Pred_fd, message);
     if (errcode)
     {
-       printf(RED START "├─Error sending TCP message: %s", message);
-       printf(RED START "├─Restart the program and try again, if the problem persists check the input parameters");
-       gracefull_leave();
+        printf(RED START "├─Error sending TCP message: %s", message);
+        printf(RED START "├─Restart the program and try again, if the problem persists check the input parameters");
+        gracefull_leave();
     }
     log_info(message, "TCPout");
     verbose("TCP message \"SELF\" sent to predecessor");
@@ -542,9 +542,9 @@ void pred_send(Node_struct *node)
     sprintf(message, "PRED %d %s %s\n", node->pred_i, node->pred_ip, node->pred_port);
     errcode = send_tcp(node->fd_succ, message);
     if (errcode)
-    {/*ERROR*/
-                printf(RED START "├─Error sending TCP message to Sucessor!");
-                gracefull_leave();
+    { /*ERROR*/
+        printf(RED START "├─Error sending TCP message to Sucessor!");
+        gracefull_leave();
     }
     log_info(message, "TCPout");
     verbose("TCP message \"PRED\" sent to successor");
@@ -746,13 +746,13 @@ void find_send_UDP(char **args, Node_struct *node, int seq)
     if (errcode)
     {
         printf(RED START "├─ERROR tried to send \"FND\" message 3 times but didnt receive ACK. Trying to send it by TCP to sucessor\n" RESET);
-    errcode = send_tcp(node->fd_succ, message);
-    if (errcode)
-    {/*ERROR*/
-                printf(RED START "├─Error sending TCP message to Sucessor!\n");
-                
-        log_info(message, "UDPout");
-    }
+        errcode = send_tcp(node->fd_succ, message);
+        if (errcode)
+        { /*ERROR*/
+            printf(RED START "├─Error sending TCP message to Sucessor!\n");
+
+            log_info(message, "UDPout");
+        }
     }
     else
     {
@@ -777,7 +777,6 @@ void response_send_TCP(char **args, Node_struct *node, int isfirst)
     {
         printf(RED START "├─Error sending TCP RSP message to sucessor!\n");
         log_info(message, "TCPout");
-    
     }
     log_info(message, "TCPout");
     verbose("TCP message \"RSP\" sent to successor");
@@ -802,12 +801,12 @@ void response_send_UDP(char **args, Node_struct *node, int isfirst)
     {
         /* error handling */
         printf(RED START "├─ERROR tried to send \"RSP\" message 3 times but didnt receive ACK. Trying to send by TCP to sucessor\n" RESET);
-    errcode = send_tcp(node->fd_succ, message);
-    if (errcode)
-    {/*ERROR*/
-    
-        printf(RED START "├─Error sending TCP message to Sucessor!\n");
-    }
+        errcode = send_tcp(node->fd_succ, message);
+        if (errcode)
+        { /*ERROR*/
+
+            printf(RED START "├─Error sending TCP message to Sucessor!\n");
+        }
     }
     else
     {
@@ -823,15 +822,13 @@ void response_receive(char **args, Node_struct *node, UDP_addr_list *addr_vect)
     struct sockaddr_in empty;
     memset(&empty, '\0', sizeof(struct sockaddr_in));
 
-    
-
     if (atoi(args[1]) == node->self_i) /*This was the initial node*/
     {
         // Checks if the response was already haddled//
-    if (addr_vect[atoi(args[2])].searched_key == -1)
-    {
-        return;
-    }
+        if (addr_vect[atoi(args[2])].searched_key == -1)
+        {
+            return;
+        }
         if (addr_vect[atoi(args[2])].addr.sin_port != empty.sin_port)
         {
             epred_send(args, node, addr_vect[atoi(args[2])].addr, 1);
@@ -1114,7 +1111,7 @@ void find(char **args, Node_struct *node, UDP_addr_list *addr_list, int seq_numb
 void INThandler(int sig)
 {
     signal(sig, SIG_IGN);
-    if(global_node->fd_pred !=-1)
+    if (global_node->fd_pred != -1)
         pred_send(global_node);
     printf(RED "\nHey budy, did you mean to hit Ctrl-C? "
                "You were lucky I caught it.\n"
@@ -1188,10 +1185,85 @@ void leave(Node_struct *node, fd_set *available_sockets)
     close(node->fd_UDP);
 }
 
+void sos_send(Node_struct *node, char **args, int seq)
+{
+    int errcode;
+    char message[BUFFER_SIZE];
+    if (seq)
+    {
+
+        sprintf(message, "SOS %d %d %s %s\n", node->pred_i, node->self_i, node->self_ip, node->self_port);
+    }
+    else
+        sprintf(message, "SOS %s %s %s %s", args[1], args[2], args[3], args[4]);
+    errcode = send_tcp(node->fd_succ, message);
+    if (errcode)
+    {
+        printf("├─ERROR sending TCP FND message to sucessor\n");
+    }
+    log_info(message, "TCPout");
+    verbose("TCP message \"FND\" sent to successor");
+    // printf(START "├─FND message sent to successor: %s", message);
+    return;
+}
+
+void sos_recieve(char **args, Node_struct *node)
+{
+    if (atoi(args[1]) == node->succ_i)
+    {
+        int fd, errcode;
+        struct addrinfo hints, *res;
+        char message[BUFFER_SIZE];
+
+        fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (fd == -1)
+        { /*ERROR*/
+            printf(RED START "├─Error creating TCP connection socket.\n");
+        }
+
+        memset(&hints, 0, sizeof hints);
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        errcode = getaddrinfo(args[3], args[4], &hints, &res);
+        if (errcode != 0)
+        { /*ERROR*/
+            printf(RED START "├─Error getting new connection address information.\n");
+        }
+        verbose("Got predecessor connection address info");
+
+        errcode = connect(fd, res->ai_addr, res->ai_addrlen);
+        if (errcode == -1)
+        { /*ERROR*/
+            printf(RED START "├─Error establishing connection.\n");
+        }
+        verbose("Succefully established connection with predecessor");
+
+        sprintf(message, "SOS %d %s %s\n", node->self_i, node->self_ip, node->self_port);
+        errcode = send_tcp(fd, message);
+        if (errcode)
+        {
+            printf(RED START "├─Error sending TCP message: %s", message);
+            printf(RED START "├─Restart the program and try again, if the problem persists check the input parameters");
+            gracefull_leave();
+        }
+        log_info(message, "TCPout");
+        verbose("TCP message \"SELF\" sent to predecessor");
+
+        node->fd_succ = fd;
+        node->succ_i = atoi(args[2]);
+        strcpy(node->succ_ip, args[3]);
+        strcpy(node->succ_port, args[4]);
+    }
+    else
+    {
+        sos_send(node, args, 0);
+    }
+}
+
 int main(int argc, char **argv)
 {
     signal(SIGINT, INThandler);
-    int UDP_fd, TCP_fd, TCP_pred_fd, max_socket, error, new_fd;
+    int UDP_fd, TCP_fd, TCP_pred_fd, max_socket, error, new_fd, sos_counter, sos_flag = 0;
     char message[BUFFER_SIZE];
     Node_struct *node;
     fd_set available_sockets, ready_sockets; // Variáveis para guardar o conjunto de sockets
@@ -1401,6 +1473,21 @@ int main(int argc, char **argv)
                             }
                             printf(START YLW "├─New connection established!" RESET "\n| ---%d─>%d─>%d---\n", node->pred_i, node->self_i, node->succ_i);
                         }
+                        else if (strcmp(args[0], "SOS") == 0)
+                        {
+                            if (sos_flag == 1)
+                            {
+                                FD_CLR(node->fd_pred, &available_sockets);
+                                FD_SET(new_fd, &available_sockets);
+                                max_socket = max_socket > TCP_pred_fd ? max_socket : TCP_pred_fd + 1;
+                                sos_flag = 0;
+                                node->fd_pred = new_fd;
+                                node->pred_i = atoi(args[1]);
+                                strcpy(node->pred_ip, args[2]);
+                                strcpy(node->pred_port, args[3]);
+                                printf(YLW "SOS connection message recieved. Ring integraty achieved!\n");
+                            }
+                        }
                         printf(START "└────\n");
                         write(1, INPUT, sizeof(INPUT));
                     }
@@ -1415,13 +1502,23 @@ int main(int argc, char **argv)
                     n_read = read(node->fd_pred, message, BUFFER_SIZE);
                     if (n_read == 0)
                     {
-                        // printf("Teste\n");
-                        /*Conexão de TCP fechada*/
-                        node->pred_i = -1;
-                        strcpy(node->pred_ip, "-1");
-                        strcpy(node->pred_port, "-1");
-                        close(node->fd_pred);
-                        FD_CLR(node->fd_pred, &available_sockets);
+                        if (sos_flag == 1)
+                        {
+                            sleep(1);
+                            sos_counter++;
+                            if (sos_counter == 20)
+                            {
+                                gracefull_leave();
+                            }
+                        }
+                        else
+                        {
+                            sleep(1);
+                            sos_counter = 0;
+                            sos_flag = 1;
+                            printf(START RED "Connection with predecessor was closed without warning!\n");
+                            sos_send(node, NULL, 1);
+                        }
                         // printf(RED "The connections with my predecessor was unexpectedly closed!");
                     }
                     sscanf(message, "%s %s %s %s %s %s", args[0], args[1], args[2], args[3], args[4], args[5]);
@@ -1465,6 +1562,10 @@ int main(int argc, char **argv)
                         strcpy(node->succ_ip, args[2]);
                         strcpy(node->succ_port, args[3]);
                         node->fd_succ = node->fd_pred;
+                    }
+                    else if (strcmp(args[0], "SOS") == 0)
+                    {
+                        sos_recieve(args, node);
                     }
                 }
             }
