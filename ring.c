@@ -84,11 +84,16 @@ int main(int argc, char **argv)
                         break;
 
                     case 3: // chord
-                        node->chord_i = atoi(args[1]);
-                        strcpy(node->chord_ip, args[2]);
-                        strcpy(node->chord_port, args[3]);
-                        printf(START IST "|Chord sucessfully added!\n" RESET);
-                        printf(START "└────\n");
+                        if (atoi(args[1]) == node->self_i)
+                            printf(START RED "Chord can't be the same as node!\n" RESET);
+                        else
+                        {
+                            node->chord_i = atoi(args[1]);
+                            strcpy(node->chord_ip, args[2]);
+                            strcpy(node->chord_port, args[3]);
+                            printf(START IST "|Chord sucessfully added!\n" RESET);
+                            printf(START "└────\n");
+                        }
                         break;
 
                     case 4: // dchord
